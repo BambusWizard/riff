@@ -11,6 +11,7 @@ const ALLOWED_HOSTS = [
   'deezer.com', 'dzcdn.net',
   'spotify.com', 'scdn.co', 'spotifycdn.com',
   'lrclib.net', 'wikipedia.org', 'wikimedia.org', 'cloudflare-dns.com',
+  'api.music.yandex.net', // answers 451 outside Russia, so the page can say why the import fails
 ];
 const hostAllowed = (h) => ALLOWED_HOSTS.some((d) => h === d || h.endsWith(`.${d}`));
 

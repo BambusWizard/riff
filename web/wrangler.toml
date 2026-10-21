@@ -1,6 +1,7 @@
 name = "riff-proxy"
 main = "worker.js"
 compatibility_date = "2026-10-01"
+preview_urls = false
 
 [vars]
 # comma-separated; the GitHub Pages origin of the web build (no trailing slash), plus the local dev server

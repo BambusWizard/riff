@@ -8,6 +8,10 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const out = join(root, 'www');
 const shim = (n) => join(root, 'mobile', 'shims', `${n}.js`);
 
+// every build has its own version; file URLs carry it so a Home Screen app never mixes old and new files,
+// and the web build compares it with version.json to notice a new deploy (bridge.js)
+const VERSION = (process.env.GITHUB_SHA || '').slice(0, 7) || Date.now().toString(36);
+
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
 
@@ -35,7 +39,7 @@ await build({
     electron: shim('electron'), dns: shim('dns'), net: shim('net'), path: 'path-browserify', events: 'events', buffer: 'buffer',
   },
   inject: [join(root, 'mobile', 'globals.js')],
-  define: { 'process.env.NODE_ENV': '"production"', 'require.main': 'undefined', RIFF_PROXY_URL: JSON.stringify((process.env.RIFF_PROXY_URL || '').trim().replace(/\/+$/, '')) },
+  define: { 'process.env.NODE_ENV': '"production"', 'require.main': 'undefined', RIFF_PROXY_URL: JSON.stringify((process.env.RIFF_PROXY_URL || '').trim().replace(/\/+$/, '')), RIFF_VERSION: JSON.stringify(VERSION) },
   plugins: [swapLocal],
   logLevel: 'warning',
 });
@@ -60,6 +64,8 @@ html = html
   .replace('<script src="audio-engine.js"></script>', '<script src="mobile-bridge.js"></script>\n  <script src="audio-engine.js"></script>')
   .replace('<script src="app.js"></script>', '<script src="app.js"></script>\n  <script src="mobile-ui.js"></script>')
   // Now Playing is a sheet on phones and starts closed
-  .replace('<aside class="right-panel lyrics-empty" id="right-panel">', '<aside class="right-panel lyrics-empty hidden" id="right-panel">');
+  .replace('<aside class="right-panel lyrics-empty" id="right-panel">', '<aside class="right-panel lyrics-empty hidden" id="right-panel">')
+  .replace(/(<(?:script|link)\b[^>]*?\b(?:src|href)=")((?!https?:|\/\/|data:)[^"?#]+\.(?:js|css))"/g, `$1$2?v=${VERSION}"`);
 writeFileSync(join(out, 'index.html'), html);
+writeFileSync(join(out, 'version.json'), JSON.stringify({ version: VERSION }));
 console.log('www/ ready');

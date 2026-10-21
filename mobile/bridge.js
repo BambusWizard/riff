@@ -197,3 +197,30 @@ if (Capacitor.getPlatform() === 'android') {
 ready = start();
 window.electronAPI = electronAPI({ ready, port: PORT, fs, fileUrlFor });
 document.documentElement.classList.add('is-mobile');
+
+// ---- web build: pick up a new deploy without reinstalling the Home Screen app ----
+// (removing the app from the Home Screen also wipes its likes, playlists and access key)
+if (!Capacitor.isNativePlatform()) {
+  const TRIED = 'riff_update_tried';
+  const audioBusy = () => [...document.querySelectorAll('audio')].some((a) => !a.paused);
+  let pending = null;
+  const apply = () => {
+    if (!pending || audioBusy()) return; // never cut a song off; retried on the next pause
+    try {
+      // a CDN that still serves the old page would loop us; try each version once per session
+      if (sessionStorage.getItem(TRIED) === pending) return;
+      sessionStorage.setItem(TRIED, pending);
+    } catch (e) {}
+    location.replace(`${location.pathname}?v=${pending}`); // new URL, so the page itself isn't taken from cache
+  };
+  const check = async () => {
+    try {
+      const { version } = await (await pageFetch(`version.json?t=${Date.now()}`, { cache: 'no-store' })).json();
+      if (version && version !== RIFF_VERSION) { pending = version; apply(); }
+    } catch (e) {}
+  };
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
+  document.addEventListener('pause', apply, true); // media events don't bubble
+  setInterval(check, 15 * 60 * 1000);
+  setTimeout(check, 5000);
+}

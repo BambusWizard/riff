@@ -74,9 +74,20 @@ html.is-mobile .rail-action-group { flex-direction: row !important; gap: 0 !impo
 html.is-mobile .nav-active-indicator,
 html.is-mobile .rail-divider,
 html.is-mobile #btn-toggle-presets-drawer { display: none !important; }
+/* seven buttons share the width (desktop min-widths made the row overflow and clip the last one) */
+html.is-mobile .sidebar { overflow: hidden !important; padding-left: 6px !important; padding-right: 6px !important; }
+html.is-mobile .sidebar-nav { flex: 6 1 0 !important; min-width: 0 !important; }
+html.is-mobile .rail-action-group { flex: 1 1 0 !important; min-width: 0 !important; justify-content: center !important; }
 html.is-mobile .nav-item,
-html.is-mobile .rail-icon-btn { width: 52px !important; height: 44px !important; border-radius: 22px !important; }
-html.is-mobile .nav-item.active { background: var(--md-sys-color-secondary-container) !important; color: var(--md-sys-color-on-secondary-container) !important; }
+html.is-mobile .rail-icon-btn {
+  flex: 0 1 52px !important; width: auto !important; min-width: 0 !important; max-width: 52px !important;
+  height: 44px !important; padding: 0 !important; border-radius: 22px !important;
+}
+/* only the current tab is highlighted: no desktop fills, no hover that sticks after a tap */
+html.is-mobile .nav-item:not(.active),
+html.is-mobile .rail-icon-btn:not(.active) { background: transparent !important; box-shadow: none !important; }
+html.is-mobile .nav-item.active,
+html.is-mobile .rail-icon-btn.active { background: var(--md-sys-color-secondary-container) !important; color: var(--md-sys-color-on-secondary-container) !important; }
 
 /* playlists drawer: a bottom sheet instead of a fly-out from the rail */
 html.is-mobile .rail-drawer {
@@ -106,6 +117,11 @@ html.is-mobile .playbar {
   transition: none !important;
 }
 html.is-mobile .playbar-left { flex: 1 1 auto !important; min-width: 0 !important; gap: 10px !important; width: auto !important; }
+/* the desktop cover (72px with a 120px shape ring) is taller than the mini player; scale it to fit */
+html.is-mobile #playbar-artwork-wrapper,
+html.is-mobile #playbar-artwork-wrapper .m3c-wrap { width: 42px !important; height: 42px !important; min-width: 42px !important; flex: 0 0 42px !important; margin: 0 0 0 6px !important; top: 0 !important; }
+html.is-mobile #playbar-artwork-wrapper .m3c-wrap { margin: 0 !important; }
+html.is-mobile #playbar-artwork-wrapper canvas { width: 70px !important; height: 70px !important; }
 html.is-mobile .playbar-left .track-meta { max-width: none !important; flex: 1 1 auto !important; }
 html.is-mobile .playbar-left > .btn-icon-pill,
 html.is-mobile .playbar-right,
@@ -399,3 +415,9 @@ html.is-mobile .artist-bio-snippet {
 html.is-mobile .artist-bio-snippet.expanded { -webkit-line-clamp: unset !important; line-clamp: unset !important; }
 html.is-mobile .artist-actions-bar { width: 100% !important; justify-content: center !important; margin-top: 4px !important; }
 html.is-mobile #btn-play-artist-tracks { width: 100% !important; justify-content: center !important; height: 44px !important; }
+
+/* Home Screen web app with a translucent status bar: iOS makes the viewport shorter than the screen by
+   the status bar height, leaving a black strip under the tab bar; a taller root fills it */
+@media (display-mode: standalone) {
+  html.is-mobile, html.is-mobile body { min-height: calc(100% + env(safe-area-inset-top, 0px)); }
+}

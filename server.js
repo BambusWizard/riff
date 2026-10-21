@@ -3114,8 +3114,75 @@ function fetchSpotifyEmbed(playlistId, ua) {
   });
 }
 
+// Yandex Music playlist links: music.yandex.ru/users/<login>/playlists/<kind> and the newer
+// share links music.yandex.ru/playlists/<uuid>. The API only answers from Russian IPs (451 otherwise)
+// and only for playlists visible by link.
+function parseYandexPlaylistUrl(inputUrl) {
+  const s = String(inputUrl || '');
+  let m = s.match(/music\.yandex\.[a-z]+\/users\/([^/?#]+)\/playlists\/(\d+)/i);
+  if (m) return { api: `https://api.music.yandex.net/users/${encodeURIComponent(decodeURIComponent(m[1]))}/playlists/${m[2]}?rich-tracks=true` };
+  m = s.match(/music\.yandex\.[a-z]+\/playlists\/([\w.-]+)/i);
+  if (m) return { api: `https://api.music.yandex.net/playlist/${encodeURIComponent(m[1])}?rich-tracks=true` };
+  return null;
+}
+
+function yandexTrack(t) {
+  if (!t || !t.title) return null;
+  return {
+    title: t.version ? `${t.title} (${t.version})` : t.title,
+    artist: Array.isArray(t.artists) ? t.artists.map(a => a.name).filter(Boolean).join(', ') : '',
+    duration: t.durationMs ? Math.round(t.durationMs / 1000) : undefined
+  };
+}
+
+async function handleYandexImport(req, res, inputUrl) {
+  const fail = (status, error, hint = '') => {
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ success: false, code: 'yandex_error', error, hint }));
+  };
+  const target = parseYandexPlaylistUrl(inputUrl);
+  if (!target) return fail(400, 'Invalid Yandex Music playlist URL');
+
+  let pl;
+  try {
+    const data = await fetchItunesJson(target.api);
+    pl = data && data.result;
+  } catch (e) {
+    const code = Number(String(e.message).replace(/\D/g, '')) || 0;
+    if (code === 451) return fail(451, 'Yandex Music is not available from this region', 'Turn off VPN for music.yandex.ru and try again');
+    if (code === 404) return fail(404, 'Playlist not found', 'Check the link');
+    if (code === 403 || code === 401) return fail(403, 'This playlist is private', 'Make it visible by link in Yandex Music');
+    return fail(502, `Yandex Music request failed (${e.message})`);
+  }
+  if (!pl) return fail(502, 'Could not read the playlist');
+
+  const items = Array.isArray(pl.tracks) ? pl.tracks : [];
+  let tracks = items.map(it => yandexTrack(it && it.track)).filter(Boolean);
+  // without rich tracks the API returns only ids; resolve them in batches
+  const ids = items.filter(it => it && !it.track && it.id).map(it => (it.albumId ? `${it.id}:${it.albumId}` : String(it.id)));
+  for (let i = 0; i < ids.length; i += 100) {
+    try {
+      const data = await fetchItunesJson(`https://api.music.yandex.net/tracks?track-ids=${ids.slice(i, i + 100).join(',')}`);
+      tracks.push(...((data && data.result) || []).map(yandexTrack).filter(Boolean));
+    } catch (_) {}
+  }
+  if (!tracks.length) return fail(404, 'No tracks found in this playlist');
+
+  const coverUri = (pl.cover && (pl.cover.uri || (pl.cover.itemsUri || [])[0])) || pl.ogImage || '';
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  return res.end(JSON.stringify({
+    success: true,
+    name: pl.title || 'Yandex Music Playlist',
+    cover: coverUri ? `https://${coverUri.replace(/^https?:\/\//, '').replace('%%', '400x400')}` : '',
+    tracks,
+    total: tracks.length
+  }));
+}
+
 async function handleSpotifyImport(req, res, inputUrl) {
-  const m = (inputUrl || '').match(/^(?:(?:https:\/\/)?open\.spotify\.com\/(?:embed\/)?playlist\/|spotify:playlist:)([a-zA-Z0-9]{22})(?:[/?#]|$)/);
+  // the same import dialog takes Yandex Music links
+  if (/music\.yandex\./i.test(inputUrl || '')) return handleYandexImport(req, res, inputUrl);
+  const m =(inputUrl || '').match(/^(?:(?:https:\/\/)?open\.spotify\.com\/(?:embed\/)?playlist\/|spotify:playlist:)([a-zA-Z0-9]{22})(?:[/?#]|$)/);
   if (!m) {
     res.writeHead(400, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ success: false, code: 'spotify_error', error: 'Invalid Spotify playlist URL' }));

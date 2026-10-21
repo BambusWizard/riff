@@ -11191,6 +11191,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const unknownIcon = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
 
     if (body && typeof body === 'object') {
+      if (body.code === 'yandex_error') {
+        return { code: 'yandex_error', title: body.error || 'Yandex Music import failed', hint: body.hint || '', icon: restrictedIcon };
+      }
       if (body.code === 'spotify_incomplete') {
         return { code: 'spotify_incomplete', title: 'Spotify returned only part of this playlist', hint: 'Connect your account or use Export files', icon: restrictedIcon };
       }

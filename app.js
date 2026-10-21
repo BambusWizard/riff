@@ -11452,6 +11452,34 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // the import dialog serves Spotify and Yandex Music; Yandex has only the playlist link
   let importProvider = 'Spotify';
+  // Yandex Music answers only Russian IPs and only its own site's requests, so the web build can't
+  // fetch a playlist itself. The user opens the API link in the browser and pastes the JSON back.
+  function yandexApiUrl(link) {
+    let m = String(link).match(/music\.yandex\.[a-z]+\/users\/([^/?#]+)\/playlists\/(\d+)/i);
+    if (m) return `https://api.music.yandex.net/users/${m[1]}/playlists/${m[2]}?rich-tracks=true`;
+    m = String(link).match(/music\.yandex\.[a-z]+\/playlists\/([\w.-]+)/i);
+    return m ? `https://api.music.yandex.net/playlist/${m[1]}?rich-tracks=true` : '';
+  }
+  function yandexFromPastedJson(text) {
+    let pl;
+    try { const d = JSON.parse(text); pl = d.result || d; } catch (e) { return { success: false, code: 'yandex_error', error: 'Could not read the pasted text', hint: 'Copy the whole page (Select All) and paste it again' }; }
+    const tracks = (Array.isArray(pl.tracks) ? pl.tracks : []).map((it) => it && (it.track || it)).filter((t) => t && t.title).map((t) => ({
+      title: t.version ? `${t.title} (${t.version})` : t.title,
+      artist: Array.isArray(t.artists) ? t.artists.map((a) => a.name).filter(Boolean).join(', ') : '',
+      duration: t.durationMs ? Math.round(t.durationMs / 1000) : undefined,
+    }));
+    if (!tracks.length) return { success: false, code: 'yandex_error', error: 'No tracks in the pasted playlist', hint: 'Open the data link again and copy the whole page' };
+    const coverUri = (pl.cover && (pl.cover.uri || (pl.cover.itemsUri || [])[0])) || pl.ogImage || '';
+    return { success: true, name: pl.title || 'Yandex Music Playlist', cover: coverUri ? `https://${coverUri.replace(/^https?:\/\//, '').replace('%%', '400x400')}` : '', tracks };
+  }
+  const btnYandexOpenData = document.getElementById('btn-yandex-open-data');
+  if (btnYandexOpenData) btnYandexOpenData.addEventListener('click', () => {
+    const api = yandexApiUrl(spotifyImportUrl ? spotifyImportUrl.value : '');
+    if (!api) { showImportError(spotifyLinkError, classifyImportError('spotify', 400, { code: 'yandex_error', error: 'Paste the playlist link first', hint: 'music.yandex.ru/users/…/playlists/…' })); return; }
+    clearImportError(spotifyLinkError);
+    window.open(api, '_blank');
+  });
+
   function openSpotifyImportModal(provider) {
     if (!spotifyModal) return;
     importProvider = provider === 'Yandex Music' ? provider : 'Spotify';
@@ -11461,6 +11489,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const modes = document.getElementById('sp-modes');
     if (modes) modes.style.display = isYandex ? 'none' : '';
     if (spotifyImportUrl) spotifyImportUrl.placeholder = isYandex ? 'music.yandex.ru/users/…/playlists/…' : 'URL';
+    const yandexHelp = document.getElementById('yandex-paste-help');
+    if (yandexHelp) yandexHelp.classList.toggle('hidden', !isYandex);
     if (spLoginPollTimer) { clearInterval(spLoginPollTimer); spLoginPollTimer = null; }
     setSpotifyImportMode('link');
     parsedSpotifyExport = { likes: [], playlists: [] };
@@ -11790,8 +11820,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     wavy.set(0);
 
     try {
-      const res = await fetch(`http://127.0.0.1:${state.serverPort}/api/spotify-import?url=${encodeURIComponent(url)}`);
-      const data = await res.json().catch(() => ({}));
+      // pasted Yandex playlist data is read right here; links go to the server
+      const pasted = importProvider === 'Yandex Music' && url.startsWith('{') ? yandexFromPastedJson(url) : null;
+      const res = pasted ? { ok: pasted.success, status: pasted.success ? 200 : 400 } : await fetch(`http://127.0.0.1:${state.serverPort}/api/spotify-import?url=${encodeURIComponent(url)}`);
+      const data = pasted || await res.json().catch(() => ({}));
       if (!res.ok || !data.success || !Array.isArray(data.tracks) || data.tracks.length === 0) {
         if (spotifyProgressWrap) spotifyProgressWrap.classList.add('hidden');
         const errInfo = classifyImportError('spotify', res.status, data);

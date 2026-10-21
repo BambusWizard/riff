@@ -2223,6 +2223,10 @@
           </span>
           <input type="text" id="spotify-import-url" class="pill-text-input" placeholder="URL" style="width: 100%; box-sizing: border-box; padding-left: 40px;">
         </div>
+        <div id="yandex-paste-help" class="hidden" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-on-surface-variant); line-height: 1.4; margin: -4px 0 12px;">
+          Paste the playlist link and tap Import. If Yandex refuses (browser version, or outside Russia): tap <b>Open playlist data</b> with VPN off, select all, copy, paste it here instead of the link and tap Import.
+          <div style="margin-top: 8px;"><button type="button" class="btn-outline-pill" id="btn-yandex-open-data">Open playlist data</button></div>
+        </div>
         <div id="spotify-link-error" class="import-error-block hidden"></div>
         <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px;">
           <label class="dialog-label">Import into</label>

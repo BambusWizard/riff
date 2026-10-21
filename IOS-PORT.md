@@ -129,3 +129,13 @@ Bundle ID `io.github.bambuswizard.riff`, иконка и сплэш сделан
 
 - Скачивание с YouTube/SoundCloud нарушает их ToS — для личного использования ок, в App Store не пустят.
 - Неподписанный IPA с бесплатным Apple ID живёт 7 дней, максимум 3 сайдлоад-приложения.
+
+## Веб-версия (ветка `web-pwa`, 2026-10-22)
+
+Альтернатива `.ipa` без Apple ID: та же сборка `www/` на GitHub Pages плюс CORS-прокси на Cloudflare Worker.
+- `web/worker.js` + `web/wrangler.toml` — прокси `/__proxy?url=…`, пускает только домены, с которыми работает Riff,
+  и только с Origin из `ALLOWED_ORIGINS`.
+- `RIFF_PROXY_URL` при сборке (`mobile/build.mjs`) задаёт адрес прокси; без него используется `/__proxy` dev-сервера.
+- `mobile/pwa/` — манифест и иконки для «На экран Домой».
+- `.github/workflows/pages.yml` — сборка при пуше в `web-pwa` → ветка `gh-pages`.
+- Риски: фоновое воспроизведение в PWA на iOS нестабильно; Safari может очистить IndexedDB с кэшем.

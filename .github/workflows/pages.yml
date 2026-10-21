@@ -1,0 +1,52 @@
+name: Web build (GitHub Pages)
+
+# Builds the browser version of the phone layout (www/) and publishes it to the gh-pages branch.
+# One-time setup: Settings -> Pages -> Source: "Deploy from a branch", branch gh-pages / (root);
+# Settings -> Secrets and variables -> Actions -> Variables: RIFF_PROXY_URL = the Cloudflare Worker URL (web/worker.js).
+on:
+  push:
+    branches: [web-pwa]
+    paths-ignore: ['**.md', 'LICENSE']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages-build
+  cancel-in-progress: true
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1' # desktop-only dev dependency, not needed here
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Build the web bundle
+        env:
+          RIFF_PROXY_URL: ${{ vars.RIFF_PROXY_URL }}
+        run: |
+          if [ -z "$RIFF_PROXY_URL" ]; then echo "::error::Set the RIFF_PROXY_URL repository variable to the Cloudflare Worker URL"; exit 1; fi
+          node mobile/build.mjs
+          rm -f www/*.map
+          touch www/.nojekyll
+
+      - name: Publish to gh-pages
+        run: |
+          cd www
+          git init -q -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898299+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -qm "Web build of ${GITHUB_SHA::7}"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git" gh-pages

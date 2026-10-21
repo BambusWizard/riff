@@ -1,0 +1,7 @@
+name = "riff-proxy"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+
+[vars]
+# comma-separated; the GitHub Pages origin of the web build (no trailing slash), plus the local dev server
+ALLOWED_ORIGINS = "https://bambuswizard.github.io,http://localhost:5173"

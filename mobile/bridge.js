@@ -35,7 +35,9 @@ const mimeOf = (p) => MIME[(p.match(/\.[a-z0-9]+$/i) || [''])[0].toLowerCase()];
 
 // ---- outbound HTTP without CORS ----
 // In the app, CapacitorHttp has already replaced window.fetch with native networking.
-// In a desktop browser (dev harness) requests go through the dev server's /__proxy.
+// In a browser they go through a /__proxy: the dev server's, or the Cloudflare Worker in web/ for the
+// GitHub Pages build (RIFF_PROXY_URL at build time).
+const PROXY = `${RIFF_PROXY_URL}/__proxy`;
 const pageFetch = window.fetch.bind(window);
 const plainHeaders = (h) => (h instanceof Headers ? Object.fromEntries(h.entries()) : { ...(h || {}) });
 async function toPlain(input, init = {}) {
@@ -51,7 +53,7 @@ globalThis.__riffFetch = async (input, init) => {
   const [url, opts] = await toPlain(input, init);
   if (Capacitor.isNativePlatform()) return pageFetch(url, opts);
   const { headers, ...rest } = opts;
-  return pageFetch(`/__proxy?url=${encodeURIComponent(url)}`, { ...rest, headers: { 'x-fwd-headers': JSON.stringify(headers || {}) } });
+  return pageFetch(`${PROXY}?url=${encodeURIComponent(url)}`, { ...rest, headers: { 'x-fwd-headers': JSON.stringify(headers || {}) } });
 };
 
 // ---- the in-app "server" ----

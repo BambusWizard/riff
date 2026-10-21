@@ -2,7 +2,7 @@ name: Web build (GitHub Pages)
 
 # Builds the browser version of the phone layout (www/) and publishes it to the gh-pages branch.
 # One-time setup: Settings -> Pages -> Source: "Deploy from a branch", branch gh-pages / (root);
-# Settings -> Secrets and variables -> Actions -> Variables: RIFF_PROXY_URL = the Cloudflare Worker URL (web/worker.js).
+# The proxy (web/worker.js) runs on Cloudflare Pages: riff-proxy.pages.dev. Some phones can't resolve *.workers.dev.
 on:
   push:
     branches: [web-pwa]
@@ -34,9 +34,8 @@ jobs:
 
       - name: Build the web bundle
         env:
-          RIFF_PROXY_URL: ${{ vars.RIFF_PROXY_URL }}
+          RIFF_PROXY_URL: https://riff-proxy.pages.dev
         run: |
-          if [ -z "$RIFF_PROXY_URL" ]; then echo "::error::Set the RIFF_PROXY_URL repository variable to the Cloudflare Worker URL"; exit 1; fi
           node mobile/build.mjs
           rm -f www/*.map
           touch www/.nojekyll

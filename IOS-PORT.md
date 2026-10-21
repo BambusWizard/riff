@@ -142,3 +142,6 @@ Bundle ID `io.github.bambuswizard.riff`, иконка и сплэш сделан
 - Доступ к Worker по ключу: секрет `ACCESS_KEY` (`npx wrangler secret put ACCESS_KEY` в `web/`); страница спрашивает ключ
   один раз и хранит его в `localStorage` (`riff_proxy_key`). В коде и репозитории ключа нет.
 - Импорт из Яндекс Музыки (окно импорта Spotify) в веб-версии не работает: Worker выходит не с российского IP.
+- Прокси переехал на Cloudflare Pages: `https://riff-proxy.pages.dev` (на iPhone `*.workers.dev` не резолвился).
+  Деплой: в `web/` выполнить `cp worker.js pages/_worker.js && npx wrangler pages deploy pages --project-name riff-proxy --branch main`.
+  Секреты Pages-проекта: `ACCESS_KEY`, `ALLOWED_ORIGINS` (`npx wrangler pages secret put … --project-name riff-proxy`).

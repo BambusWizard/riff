@@ -1,7 +1,8 @@
 // Cloudflare Worker: the CORS proxy the web build of Riff uses instead of CapacitorHttp.
 // The page calls  <worker>/__proxy?url=<target>  with the real request headers JSON-encoded in
 // x-fwd-headers (browsers won't let a page set User-Agent and friends itself).
-// Only hosts Riff talks to are allowed, and only from the origins in ALLOWED_ORIGINS.
+// Only hosts Riff talks to are allowed, only from the origins in ALLOWED_ORIGINS, and only with the
+// access key (secret ACCESS_KEY, sent by the page in x-riff-key).
 
 const ALLOWED_HOSTS = [
   'youtube.com', 'googlevideo.com', 'ytimg.com', 'ggpht.com', 'googleusercontent.com', 'googleapis.com',
@@ -20,7 +21,7 @@ function cors(origin) {
   return {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'GET, POST, HEAD, OPTIONS',
-    'Access-Control-Allow-Headers': 'x-fwd-headers, content-type, range',
+    'Access-Control-Allow-Headers': 'x-fwd-headers, x-riff-key, content-type, range',
     'Access-Control-Expose-Headers': '*',
     'Access-Control-Max-Age': '86400',
     Vary: 'Origin',
@@ -33,6 +34,10 @@ export default {
     const origin = req.headers.get('origin') || '';
     if (!origins.includes(origin)) return new Response('origin not allowed', { status: 403 });
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(origin) });
+
+    if (!env.ACCESS_KEY || req.headers.get('x-riff-key') !== env.ACCESS_KEY) {
+      return new Response('access key required', { status: 401, headers: cors(origin) });
+    }
 
     const u = new URL(req.url);
     if (u.pathname !== '/__proxy') return new Response('not found', { status: 404, headers: cors(origin) });

@@ -139,3 +139,6 @@ Bundle ID `io.github.bambuswizard.riff`, иконка и сплэш сделан
 - `mobile/pwa/` — манифест и иконки для «На экран Домой».
 - `.github/workflows/pages.yml` — сборка при пуше в `web-pwa` → ветка `gh-pages`.
 - Риски: фоновое воспроизведение в PWA на iOS нестабильно; Safari может очистить IndexedDB с кэшем.
+- Доступ к Worker по ключу: секрет `ACCESS_KEY` (`npx wrangler secret put ACCESS_KEY` в `web/`); страница спрашивает ключ
+  один раз и хранит его в `localStorage` (`riff_proxy_key`). В коде и репозитории ключа нет.
+- Импорт из Яндекс Музыки (окно импорта Spotify) в веб-версии не работает: Worker выходит не с российского IP.

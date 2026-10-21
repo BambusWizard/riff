@@ -49,11 +49,40 @@ async function toPlain(input, init = {}) {
   }
   return [String(input), { ...init, headers: plainHeaders(init.headers) }];
 }
+// The Worker wants an access key; it is asked for once and kept in this browser.
+const KEY_STORE = 'riff_proxy_key';
+let keyPrompt = null;
+let keyDeclined = false; // Cancel stops the asking until the next launch
+const storedKey = () => { try { return localStorage.getItem(KEY_STORE) || ''; } catch (e) { return ''; } };
+function proxyKey(again) {
+  if (!RIFF_PROXY_URL || keyDeclined) return Promise.resolve('');
+  const key = again ? '' : storedKey();
+  if (key) return Promise.resolve(key);
+  // several requests can fail at once; ask only one time
+  if (!keyPrompt) {
+    keyPrompt = new Promise((resolve) => setTimeout(() => {
+      const entered = (window.prompt(again ? 'Wrong access key. Enter the Riff access key:' : 'Enter the Riff access key:') || '').trim();
+      try { if (entered) localStorage.setItem(KEY_STORE, entered); else localStorage.removeItem(KEY_STORE); } catch (e) {}
+      keyDeclined = !entered;
+      keyPrompt = null;
+      resolve(entered);
+    }, 0));
+  }
+  return keyPrompt;
+}
 globalThis.__riffFetch = async (input, init) => {
   const [url, opts] = await toPlain(input, init);
   if (Capacitor.isNativePlatform()) return pageFetch(url, opts);
   const { headers, ...rest } = opts;
-  return pageFetch(`${PROXY}?url=${encodeURIComponent(url)}`, { ...rest, headers: { 'x-fwd-headers': JSON.stringify(headers || {}) } });
+  const send = (key) => pageFetch(`${PROXY}?url=${encodeURIComponent(url)}`, { ...rest, headers: { 'x-fwd-headers': JSON.stringify(headers || {}), ...(key ? { 'x-riff-key': key } : {}) } });
+  const used = await proxyKey(false);
+  let r = await send(used);
+  if (r.status === 401 && RIFF_PROXY_URL) {
+    // another request may already have asked for a new key in the meantime
+    const current = storedKey();
+    r = await send(current && current !== used ? current : await proxyKey(true));
+  }
+  return r;
 };
 
 // ---- the in-app "server" ----

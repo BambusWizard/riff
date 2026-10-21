@@ -11450,8 +11450,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  function openSpotifyImportModal() {
+  // the import dialog serves Spotify and Yandex Music; Yandex has only the playlist link
+  let importProvider = 'Spotify';
+  function openSpotifyImportModal(provider) {
     if (!spotifyModal) return;
+    importProvider = provider === 'Yandex Music' ? provider : 'Spotify';
+    const isYandex = importProvider === 'Yandex Music';
+    const titleEl = document.getElementById('spotify-import-title');
+    if (titleEl) titleEl.textContent = `Import from ${importProvider}`;
+    const modes = document.getElementById('sp-modes');
+    if (modes) modes.style.display = isYandex ? 'none' : '';
+    if (spotifyImportUrl) spotifyImportUrl.placeholder = isYandex ? 'music.yandex.ru/users/…/playlists/…' : 'URL';
     if (spLoginPollTimer) { clearInterval(spLoginPollTimer); spLoginPollTimer = null; }
     setSpotifyImportMode('link');
     parsedSpotifyExport = { likes: [], playlists: [] };
@@ -11474,7 +11483,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (spotifyTargetTrigger) spotifyTargetTrigger.disabled = false;
     if (spotifyImportTarget) {
       spotifyImportTarget.disabled = false;
-      spotifyImportTarget.innerHTML = '<option value="new">New playlist (Spotify name)</option>';
+      spotifyImportTarget.innerHTML = `<option value="new">New playlist (${importProvider} name)</option>`;
       state.playlists.forEach(p => {
         const opt = document.createElement('option');
         opt.value = p.id;
@@ -11484,8 +11493,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       spotifyImportTarget.value = 'new';
     }
     if (spotifyTargetMenu) {
-      spotifyTargetMenu.innerHTML = '<button class="m3-dropdown-option selected" data-value="new" type="button">New playlist (Spotify name)</button>';
-      if (spotifyTargetLabel) spotifyTargetLabel.textContent = 'New playlist (Spotify name)';
+      spotifyTargetMenu.innerHTML = `<button class="m3-dropdown-option selected" data-value="new" type="button">New playlist (${importProvider} name)</button>`;
+      if (spotifyTargetLabel) spotifyTargetLabel.textContent = `New playlist (${importProvider} name)`;
       state.playlists.forEach(p => {
         const opt = document.createElement('button');
         opt.type = 'button';
@@ -11516,7 +11525,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (btnConfirmSpotifyImport) {
       btnConfirmSpotifyImport.disabled = false;
       if (spotifyBtnIcon) spotifyBtnIcon.classList.remove('hidden');
-      if (spotifyBtnText) spotifyBtnText.textContent = 'Import from Spotify';
+      if (spotifyBtnText) spotifyBtnText.textContent = `Import from ${importProvider}`;
       btnConfirmSpotifyImport.dataset.action = 'import';
     }
     if (btnCancelSpotifyImport) btnCancelSpotifyImport.disabled = false;
@@ -11827,7 +11836,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       const targetVal = spotifyImportTarget ? spotifyImportTarget.value : 'new';
       if (targetVal === 'new') {
-        createPlaylist(data.name || 'Spotify Playlist', foundTracks, data.cover || '');
+        createPlaylist(data.name || `${importProvider} Playlist`, foundTracks, data.cover || '');
       } else {
         const pl = state.playlists.find(p => p.id === targetVal);
         if (pl) {
@@ -11876,7 +11885,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  if (btnOpenSpotifyImport) btnOpenSpotifyImport.addEventListener('click', openSpotifyImportModal);
+  if (btnOpenSpotifyImport) btnOpenSpotifyImport.addEventListener('click', () => openSpotifyImportModal('Spotify'));
+  const btnOpenYandexImport = document.getElementById('btn-open-yandex-import');
+  if (btnOpenYandexImport) btnOpenYandexImport.addEventListener('click', () => openSpotifyImportModal('Yandex Music'));
   if (btnCancelSpotifyImport) btnCancelSpotifyImport.addEventListener('click', closeSpotifyImportModal);
   if (btnConfirmSpotifyImport) btnConfirmSpotifyImport.addEventListener('click', handleSpotifyImportAction);
   if (spotifyImportUrl) {

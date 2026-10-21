@@ -149,3 +149,8 @@ Bundle ID `io.github.bambuswizard.riff`, иконка и сплэш сделан
   Лайки, плейлисты, история и настройки (`devsize_*`/`riff_*`, кроме привязанных к устройству) лежат в KV `RIFF_DATA`
   под `library:<имя>`. Клиент: `mobile/bridge.js` (выгрузка через 5 с после изменения, загрузка при старте и при возврате в приложение;
   побеждает последнее изменение). Прокси деплоится `npm run deploy-proxy` (конфиг `web/pages-site/wrangler.toml`).
+- Яндекс Музыка через Россию: функция Yandex Cloud `riff-ru-relay` (`web/ru-relay/index.js`,
+  https://functions.yandexcloud.net/d4edlbqc8o2mqd34fk96). Worker шлёт туда запросы к `*.yandex.ru/net` с `RELAY_SECRET`
+  и добавляет токен пользователя из `YANDEX_TOKENS` (`{"main": "...", "user2": "..."}`).
+  Переразвернуть: `yc serverless function version create --function-name riff-ru-relay --runtime nodejs22
+  --entrypoint index.handler --memory 128m --execution-timeout 30s --source-path web/ru-relay --environment RELAY_SECRET=...`.

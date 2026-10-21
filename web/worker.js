@@ -5,6 +5,10 @@
 // personal access key (sent by the page in x-riff-key, or ?k= where a header would force a preflight).
 // Keys: secret USERS = {"<key>": "<name>", ...}; the older single ACCESS_KEY still works as "main".
 //
+// Yandex Music answers only Russian IPs, so its hosts are fetched through a Yandex Cloud Function
+// (web/ru-relay, secrets RU_RELAY_URL + RELAY_SECRET). The user's Yandex token (secret YANDEX_TOKENS =
+// {"<name>": "<token>"}) is added there, so the page never sees it.
+//
 // /__sync keeps each person's library (likes, playlists, history, settings) in the RIFF_DATA KV
 // namespace: GET returns { data, at }, POST stores { data } and returns the new { at }.
 
@@ -15,9 +19,24 @@ const ALLOWED_HOSTS = [
   'deezer.com', 'dzcdn.net',
   'spotify.com', 'scdn.co', 'spotifycdn.com',
   'lrclib.net', 'wikipedia.org', 'wikimedia.org', 'cloudflare-dns.com',
-  'api.music.yandex.net', // answers 451 outside Russia, so the page can say why the import fails
+  'yandex.ru', 'yandex.net', // through the Russian relay
 ];
 const hostAllowed = (h) => ALLOWED_HOSTS.some((d) => h === d || h.endsWith(`.${d}`));
+const isYandex = (h) => /(^|\.)yandex\.(ru|net)$/.test(h);
+
+function yandexToken(env, user) {
+  try { return JSON.parse(env.YANDEX_TOKENS || '{}')[user] || ''; } catch (e) { return ''; }
+}
+
+// one hop through the relay; it follows redirects itself, and only to Yandex hosts
+function viaRelay(env, user, target, method, headers, body) {
+  const fwd = { ...headers };
+  const token = target.hostname === 'api.music.yandex.net' && yandexToken(env, user);
+  if (token) fwd.Authorization = `OAuth ${token}`;
+  return fetch(`${env.RU_RELAY_URL}?url=${encodeURIComponent(target.href)}`, {
+    method, body, headers: { 'x-relay-secret': env.RELAY_SECRET || '', 'x-fwd-headers': JSON.stringify(fwd) },
+  });
+}
 
 // response headers the page must not see or that no longer match the (decoded) body
 const DROP = /^(content-encoding|content-length|transfer-encoding|connection|set-cookie|alt-svc|strict-transport-security)$/i;
@@ -86,7 +105,9 @@ export default {
       if (target.protocol !== 'https:' || !hostAllowed(target.hostname)) {
         return new Response(`host not allowed: ${target.hostname}`, { status: 403, headers: cors(origin) });
       }
-      r = await fetch(target.href, { method: req.method, headers, body, redirect: 'manual' });
+      r = isYandex(target.hostname) && env.RU_RELAY_URL
+        ? await viaRelay(env, user, target, req.method, headers, body)
+        : await fetch(target.href, { method: req.method, headers, body, redirect: 'manual' });
       const loc = r.status >= 300 && r.status < 400 && r.headers.get('location');
       if (!loc) break;
       target = new URL(loc, target);

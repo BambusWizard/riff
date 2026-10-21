@@ -35,7 +35,7 @@ await build({
     electron: shim('electron'), dns: shim('dns'), net: shim('net'), path: 'path-browserify', events: 'events', buffer: 'buffer',
   },
   inject: [join(root, 'mobile', 'globals.js')],
-  define: { 'process.env.NODE_ENV': '"production"', 'require.main': 'undefined', RIFF_PROXY_URL: JSON.stringify((process.env.RIFF_PROXY_URL || '').replace(/\/+$/, '')) },
+  define: { 'process.env.NODE_ENV': '"production"', 'require.main': 'undefined', RIFF_PROXY_URL: JSON.stringify((process.env.RIFF_PROXY_URL || '').trim().replace(/\/+$/, '')) },
   plugins: [swapLocal],
   logLevel: 'warning',
 });

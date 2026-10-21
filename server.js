@@ -3152,6 +3152,7 @@ async function handleYandexImport(req, res, inputUrl) {
     if (code === 451) return fail(451, 'Yandex Music is not available from this region', 'Turn off VPN for music.yandex.ru and try again');
     if (code === 404) return fail(404, 'Playlist not found', 'Check the link');
     if (code === 403 || code === 401) return fail(403, 'This playlist is private', 'Make it visible by link in Yandex Music');
+    if (/timeout|hang up|network|failed to fetch/i.test(e.message)) return fail(504, 'Yandex Music did not answer', 'Check the connection; with a VPN on, exclude music.yandex.ru from it');
     return fail(502, `Yandex Music request failed (${e.message})`);
   }
   if (!pl) return fail(502, 'Could not read the playlist');
@@ -4104,8 +4105,8 @@ function fetchItunesJson(url) {
       });
     });
     req.on('timeout', () => {
+      reject(new Error('timeout')); // before destroy(), which reports a generic "socket hang up"
       req.destroy();
-      reject(new Error('timeout'));
     });
     req.on('error', err => reject(err));
   });

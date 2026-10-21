@@ -21,3 +21,4 @@ web/.wrangler/
 
 # generated copy of web/worker.js for the Cloudflare Pages deploy
 web/pages/
+web/pages-site/dist/

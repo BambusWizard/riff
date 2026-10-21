@@ -1,0 +1,10 @@
+# Cloudflare Pages project that serves web/worker.js as riff-proxy.pages.dev.
+# Deploy from the repo root: npm run deploy-proxy   (copies worker.js to dist/_worker.js and runs wrangler pages deploy)
+# Secrets (wrangler pages secret put <name> --project-name riff-proxy): ACCESS_KEY, USERS, ALLOWED_ORIGINS
+name = "riff-proxy"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-10-01"
+
+[[kv_namespaces]]
+binding = "RIFF_DATA"
+id = "5422b22931ea4d389a719339aa493e38"

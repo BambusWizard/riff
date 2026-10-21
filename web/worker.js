@@ -1,8 +1,12 @@
 // Cloudflare Worker: the CORS proxy the web build of Riff uses instead of CapacitorHttp.
 // The page calls  <worker>/__proxy?url=<target>  with the real request headers JSON-encoded in
 // x-fwd-headers (browsers won't let a page set User-Agent and friends itself).
-// Only hosts Riff talks to are allowed, only from the origins in ALLOWED_ORIGINS, and only with the
-// access key (secret ACCESS_KEY, sent by the page in x-riff-key).
+// Only hosts Riff talks to are allowed, only from the origins in ALLOWED_ORIGINS, and only with a
+// personal access key (sent by the page in x-riff-key, or ?k= where a header would force a preflight).
+// Keys: secret USERS = {"<key>": "<name>", ...}; the older single ACCESS_KEY still works as "main".
+//
+// /__sync keeps each person's library (likes, playlists, history, settings) in the RIFF_DATA KV
+// namespace: GET returns { data, at }, POST stores { data } and returns the new { at }.
 
 const ALLOWED_HOSTS = [
   'youtube.com', 'googlevideo.com', 'ytimg.com', 'ggpht.com', 'googleusercontent.com', 'googleapis.com',
@@ -29,6 +33,30 @@ function cors(origin) {
   };
 }
 
+function userFor(env, key) {
+  if (!key) return null;
+  let users = {};
+  try { users = JSON.parse(env.USERS || '{}'); } catch (e) {}
+  if (Object.prototype.hasOwnProperty.call(users, key)) return String(users[key]);
+  return env.ACCESS_KEY && key === env.ACCESS_KEY ? 'main' : null;
+}
+
+async function sync(req, env, user, origin) {
+  const json = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: { ...cors(origin), 'Content-Type': 'application/json' } });
+  if (!env.RIFF_DATA) return json({ error: 'storage not configured' }, 500);
+  const key = `library:${user}`;
+  if (req.method === 'GET') return json((await env.RIFF_DATA.get(key, 'json')) || { data: null, at: 0 });
+  if (req.method === 'POST') {
+    let data;
+    try { data = JSON.parse(await req.text()).data; } catch (e) { return json({ error: 'bad body' }, 400); }
+    if (!data || typeof data !== 'object') return json({ error: 'bad body' }, 400);
+    const at = Date.now();
+    await env.RIFF_DATA.put(key, JSON.stringify({ data, at }));
+    return json({ at });
+  }
+  return json({ error: 'method not allowed' }, 405);
+}
+
 export default {
   async fetch(req, env) {
     const origins = String(env.ALLOWED_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -36,11 +64,11 @@ export default {
     if (!origins.includes(origin)) return new Response('origin not allowed', { status: 403 });
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(origin) });
 
-    if (!env.ACCESS_KEY || req.headers.get('x-riff-key') !== env.ACCESS_KEY) {
-      return new Response('access key required', { status: 401, headers: cors(origin) });
-    }
-
     const u = new URL(req.url);
+    const user = userFor(env, req.headers.get('x-riff-key') || u.searchParams.get('k') || '');
+    if (!user) return new Response('access key required', { status: 401, headers: cors(origin) });
+
+    if (u.pathname === '/__sync') return sync(req, env, user, origin);
     if (u.pathname !== '/__proxy') return new Response('not found', { status: 404, headers: cors(origin) });
 
     let target;

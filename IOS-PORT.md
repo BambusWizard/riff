@@ -145,3 +145,7 @@ Bundle ID `io.github.bambuswizard.riff`, иконка и сплэш сделан
 - Прокси переехал на Cloudflare Pages: `https://riff-proxy.pages.dev` (на iPhone `*.workers.dev` не резолвился).
   Деплой: в `web/` выполнить `cp worker.js pages/_worker.js && npx wrangler pages deploy pages --project-name riff-proxy --branch main`.
   Секреты Pages-проекта: `ACCESS_KEY`, `ALLOWED_ORIGINS` (`npx wrangler pages secret put … --project-name riff-proxy`).
+- Синхронизация библиотеки (веб): ключ = аккаунт. Секрет `USERS` = `{"<ключ>": "<имя>"}`, старый `ACCESS_KEY` = пользователь `main`.
+  Лайки, плейлисты, история и настройки (`devsize_*`/`riff_*`, кроме привязанных к устройству) лежат в KV `RIFF_DATA`
+  под `library:<имя>`. Клиент: `mobile/bridge.js` (выгрузка через 5 с после изменения, загрузка при старте и при возврате в приложение;
+  побеждает последнее изменение). Прокси деплоится `npm run deploy-proxy` (конфиг `web/pages-site/wrangler.toml`).

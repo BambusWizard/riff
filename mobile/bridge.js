@@ -66,6 +66,7 @@ function proxyKey(again) {
       keyDeclined = !entered;
       keyPrompt = null;
       resolve(entered);
+      if (entered) setTimeout(() => { if (typeof syncPull === 'function') syncPull(); }, 0); // a new key may come with a library
     }, 0));
   }
   return keyPrompt;
@@ -198,11 +199,95 @@ ready = start();
 window.electronAPI = electronAPI({ ready, port: PORT, fs, fileUrlFor });
 document.documentElement.classList.add('is-mobile');
 
+const audioBusy = () => [...document.querySelectorAll('audio')].some((a) => !a.paused);
+
+// ---- web build: library sync. Likes, playlists, history and settings follow the personal key ----
+// It is everything app.js keeps under devsize_* / riff_* in localStorage, minus what belongs to one device.
+const SYNC_META = 'riff_sync_meta'; // { at: server time of the copy we hold, dirty: changes not sent yet }
+const DEVICE_ONLY = /^(riff_proxy_key|riff_sync_meta|riff_debug_log|riff_bg_url|riff_bg_vpath|riff_banner_media|riff_cache_limit_mb|riff_right_panel_width|riff_queue_state|riff_volume|riff_muted|riff_settings_cat|riff_home_pane|riff_search_pos|riff_font_scale|riff_perf_mode|devsize_ui_scale)$/;
+const synced = (k) => /^(devsize_|riff_)/.test(k) && !DEVICE_ONLY.test(k);
+let syncPull = null;
+if (!Capacitor.isNativePlatform() && RIFF_PROXY_URL) {
+  const SYNC_URL = `${RIFF_PROXY_URL}/__sync`;
+  const rawSet = Storage.prototype.setItem;
+  const rawRemove = Storage.prototype.removeItem;
+  const readMeta = () => { try { return JSON.parse(localStorage.getItem(SYNC_META)) || { at: 0, dirty: false }; } catch (e) { return { at: 0, dirty: false }; } };
+  const writeMeta = (m) => { try { rawSet.call(localStorage, SYNC_META, JSON.stringify(m)); } catch (e) {} };
+  const snapshot = () => {
+    const d = {};
+    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (synced(k)) d[k] = localStorage.getItem(k); }
+    return d;
+  };
+
+  let pushTimer = null;
+  const push = async () => {
+    clearTimeout(pushTimer);
+    pushTimer = null;
+    const key = storedKey();
+    if (!key) return;
+    const body = JSON.stringify({ data: snapshot() });
+    try {
+      // text/plain with the key in the URL is a "simple" request (no preflight), so it can use keepalive
+      // and still go out while the app is being closed; keepalive bodies are capped at 64 KB
+      const r = await pageFetch(`${SYNC_URL}?k=${encodeURIComponent(key)}`, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body, keepalive: body.length < 60000 });
+      if (r.ok) writeMeta({ at: (await r.json()).at, dirty: false });
+    } catch (e) { console.warn('[sync] upload failed', e.message); }
+  };
+
+  // changes made before the first download are app.js start-up defaults; they must not overwrite the
+  // library stored online, so they are only sent if there is nothing online yet
+  let ready = false;
+  let applying = false;
+  const changed = () => {
+    if (!ready || applying) return;
+    const m = readMeta();
+    if (!m.dirty) writeMeta({ ...m, dirty: true });
+    clearTimeout(pushTimer);
+    pushTimer = setTimeout(push, 5000);
+  };
+  Storage.prototype.setItem = function (k, v) { rawSet.call(this, k, v); if (this === localStorage && synced(k)) changed(); };
+  Storage.prototype.removeItem = function (k) { rawRemove.call(this, k); if (this === localStorage && synced(k)) changed(); };
+
+  let pendingRemote = null;
+  const applyRemote = () => {
+    if (!pendingRemote || audioBusy()) return; // never cut a song off; retried on the next pause
+    const { data, at } = pendingRemote;
+    pendingRemote = null;
+    applying = true;
+    for (const k of Object.keys(snapshot())) if (!(k in data)) rawRemove.call(localStorage, k);
+    for (const [k, v] of Object.entries(data)) if (synced(k)) rawSet.call(localStorage, k, v);
+    writeMeta({ at, dirty: false });
+    location.reload(); // app.js holds the old library in memory
+  };
+
+  syncPull = async () => {
+    const key = storedKey();
+    if (!key) return;
+    let remote;
+    try {
+      const r = await pageFetch(SYNC_URL, { headers: { 'x-riff-key': key }, cache: 'no-store' });
+      if (!r.ok) return;
+      remote = await r.json();
+    } catch (e) { console.warn('[sync] download failed', e.message); return; }
+    const m = readMeta();
+    ready = true;
+    const empty = !remote.data || !Object.keys(remote.data).length;
+    // nothing online yet, or local changes not sent: this device's copy wins (last change wins)
+    if (empty || m.dirty) { push(); return; }
+    if (remote.at !== m.at) { pendingRemote = remote; applyRemote(); }
+  };
+
+  syncPull();
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { if (pushTimer) push(); } else syncPull();
+  });
+  document.addEventListener('pause', applyRemote, true); // media events don't bubble
+}
+
 // ---- web build: pick up a new deploy without reinstalling the Home Screen app ----
 // (removing the app from the Home Screen also wipes its likes, playlists and access key)
 if (!Capacitor.isNativePlatform()) {
   const TRIED = 'riff_update_tried';
-  const audioBusy = () => [...document.querySelectorAll('audio')].some((a) => !a.paused);
   let pending = null;
   const apply = () => {
     if (!pending || audioBusy()) return; // never cut a song off; retried on the next pause

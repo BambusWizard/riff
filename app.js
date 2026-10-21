@@ -635,7 +635,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     else if (cmd === 'stop') { if (state.isPlaying) pauseSmooth(); }
   }
 
-  if ('mediaSession' in navigator) {
+  function registerMediaSessionHandlers() {
+    if (!('mediaSession' in navigator)) return;
     try {
       navigator.mediaSession.setActionHandler('play', () => handleMediaCommand('play', 'session'));
       navigator.mediaSession.setActionHandler('pause', () => handleMediaCommand('pause', 'session'));
@@ -653,7 +654,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       });
     } catch (_) {}
+    // iOS shows +-10 s seek buttons instead of next/previous when these exist
+    for (const action of ['seekbackward', 'seekforward']) {
+      try { navigator.mediaSession.setActionHandler(action, null); } catch (_) {}
+    }
   }
+  registerMediaSessionHandlers();
 
   function hexToRgb(hex) {
     hex = hex.replace('#', '');
@@ -5262,6 +5268,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     el.nativeAudio.addEventListener('play', () => {
       emitPluginEvent('play');
+      // iOS drops the lock screen next/previous handlers when the audio source changes
+      if (window.electronAPI && window.electronAPI.isMobile) registerMediaSessionHandlers();
       if (!hasNotifiedMediaKeysActive) {
         hasNotifiedMediaKeysActive = true;
         if (window.electronAPI && window.electronAPI.mediaKeysActive) {

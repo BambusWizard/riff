@@ -1,0 +1,14 @@
+{
+  "appId": "io.github.bambuswizard.riff",
+  "appName": "Riff",
+  "webDir": "www",
+  "backgroundColor": "#121214",
+  "ios": {
+    "contentInset": "never",
+    "scheme": "Riff",
+    "limitsNavigationsToAppBoundDomains": false
+  },
+  "plugins": {
+    "CapacitorHttp": { "enabled": true }
+  }
+}

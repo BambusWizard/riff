@@ -13,6 +13,8 @@ const PORT = 38472;
 const { DATA_DIR, CACHE_DIR, CUSTOM_LYRICS_DIR, LYRICS_DIR, THUMBNAILS_DIR, METADATA_PATH, LIBRARY_DIR, LIBRARY_PATH, ytDlpCommand, resolveDownloadDir, resolveBinary } = require('./platform');
 const logger = require('./logger');
 const { getSystemAudioOutputInfo } = require('./audio-output');
+// iOS can't hand a cross-origin stream to Web Audio, so it plays everything from the disk cache.
+const STREAM_VIA_CACHE = !!require('./platform').STREAM_VIA_CACHE;
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const SAFE_MEDIA_URL = /^https?:\/\//i;
@@ -168,7 +170,7 @@ function cleanTrackId(id) {
 
 async function findCachedFile(trackId) {
   const cleanId = cleanTrackId(trackId);
-  const extensions = ['.opus', '.webm', '.m4a', '.mp3'];
+  const extensions = ['.opus', '.webm', '.m4a', '.mp3', '.aac'];
   for (const ext of extensions) {
     const filePath = path.join(CACHE_DIR, `${cleanId}${ext}`);
     try {
@@ -1226,8 +1228,10 @@ async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}) {
   if (downloadingSet.has(cleanId) || await findCachedFile(cleanId)) return;
   downloadingSet.add(cleanId);
 
-  const outputPath = path.join(CACHE_DIR, `${cleanId}.opus`);
+  const tempPrefix = `${cleanId}.temp.`;
   const tempPath = path.join(CACHE_DIR, `${cleanId}.temp.opus`);
+  // the iOS extractor keeps the original container (m4a/mp3/aac), so let it pick the extension
+  const outTemplate = STREAM_VIA_CACHE ? path.join(CACHE_DIR, `${tempPrefix}%(ext)s`) : tempPath;
 
   const args = [
     '--no-config',
@@ -1237,7 +1241,7 @@ async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}) {
     '-x',
     '--audio-format', 'opus',
     '--audio-quality', '128K',
-    '-o', tempPath
+    '-o', outTemplate
   ];
 
   if (platform === 'youtube') {
@@ -1252,42 +1256,57 @@ async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}) {
 
   let cmd;
   try { cmd = ytDlpCommand(args); } catch (e) { downloadingSet.delete(cleanId); try { logger.error('Download command error: ' + (meta.title || trackId), e); } catch (_) {} return; }
-  const proc = spawn(cmd.bin, cmd.args, { windowsHide: true });
-  proc.on('close', async (code) => {
-    downloadingSet.delete(cleanId);
-    if (code === 0 && fs.existsSync(tempPath)) {
-      try {
-        const stat = await fs.promises.stat(tempPath);
-        if (stat.size > 60000) {
-          await fs.promises.rename(tempPath, outputPath);
-          saveTrackMetadata(cleanId, {
-            id: trackId,
-            title: meta.title || '',
-            artist: meta.artist || '',
-            duration: meta.duration || 0,
-            thumbnail: meta.thumbnail || '',
-            platform: platform || 'youtube',
-            fileSize: stat.size
-          });
-        } else {
-          try { await fs.promises.unlink(tempPath); } catch (e) {}
-        }
-      } catch (e) {}
-    } else {
-      try { logger.error('Download failure: ' + (meta.title || trackId) + ' (exit code ' + code + ')'); } catch (_) {}
-      if (fs.existsSync(tempPath)) {
-        try { await fs.promises.unlink(tempPath); } catch (e) {}
-      }
-    }
-  });
+  const findTemp = () => {
+    if (fs.existsSync(tempPath)) return tempPath;
+    try {
+      const name = fs.readdirSync(CACHE_DIR).find((f) => f.startsWith(tempPrefix));
+      return name ? path.join(CACHE_DIR, name) : null;
+    } catch (e) { return null; }
+  };
 
-  proc.on('error', (err) => {
-    downloadingSet.delete(cleanId);
-    try { logger.error('Download spawn error: ' + (meta.title || trackId), err); } catch (_) {}
+  // resolves once the file is on disk (or the download failed), so iOS can wait for it before playing
+  return new Promise((resolve) => {
+    const proc = spawn(cmd.bin, cmd.args, { windowsHide: true });
+    proc.on('close', async (code) => {
+      downloadingSet.delete(cleanId);
+      const found = findTemp();
+      if (code === 0 && found) {
+        try {
+          const stat = await fs.promises.stat(found);
+          if (stat.size > 60000) {
+            const outputPath = path.join(CACHE_DIR, `${cleanId}${path.extname(found)}`);
+            await fs.promises.rename(found, outputPath);
+            saveTrackMetadata(cleanId, {
+              id: trackId,
+              title: meta.title || '',
+              artist: meta.artist || '',
+              duration: meta.duration || 0,
+              thumbnail: meta.thumbnail || '',
+              platform: platform || 'youtube',
+              fileSize: stat.size
+            });
+          } else {
+            try { await fs.promises.unlink(found); } catch (e) {}
+          }
+        } catch (e) {}
+      } else {
+        try { logger.error('Download failure: ' + (meta.title || trackId) + ' (exit code ' + code + ')'); } catch (_) {}
+        if (found) {
+          try { await fs.promises.unlink(found); } catch (e) {}
+        }
+      }
+      resolve();
+    });
+
+    proc.on('error', (err) => {
+      downloadingSet.delete(cleanId);
+      try { logger.error('Download spawn error: ' + (meta.title || trackId), err); } catch (_) {}
+      resolve();
+    });
   });
 }
 
-async function prefetchTrack(trackUrl, trackId, platform) {
+async function prefetchTrack(trackUrl, trackId, platform, meta = null) {
   let cleanId = cleanTrackId(trackId);
   if (!cleanId && trackUrl && trackUrl.includes('v=')) {
     cleanId = cleanTrackId(trackUrl.split('v=')[1].split('&')[0]);
@@ -1296,6 +1315,15 @@ async function prefetchTrack(trackUrl, trackId, platform) {
   if (!cacheKey || prefetchingSet.size > 2) return;
   const isCached = (cleanId && await findCachedFile(cleanId)) || streamUrlCache.has(cacheKey) || (cleanId && streamUrlCache.has(cleanId));
   if (isCached || prefetchingSet.has(cacheKey)) return;
+  if (STREAM_VIA_CACHE) {
+    // only pre-download songs the app is about to play (it sends their metadata); skip speculative
+    // search-result prefetches, which would cost a whole download on mobile data
+    if (!meta || !meta.title || !cleanId) return;
+    if (platform === 'youtube' && (!trackUrl || !trackUrl.startsWith('http'))) trackUrl = `https://www.youtube.com/watch?v=${cleanId}`;
+    prefetchingSet.add(cacheKey);
+    try { await downloadTrackToDisk(trackUrl, cleanId, platform, meta); } finally { prefetchingSet.delete(cacheKey); }
+    return;
+  }
   prefetchingSet.add(cacheKey);
 
   try {
@@ -1775,6 +1803,20 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
     return res.end(JSON.stringify(data));
   }
 
+  if (STREAM_VIA_CACHE) {
+    if (cleanId) await downloadTrackToDisk(trackUrl, cleanId, platform, meta);
+    if (cleanId && !await findCachedFile(cleanId) && (title || artist)) {
+      // same SoundCloud fallback as the streaming path below
+      await downloadTrackToDisk(`scsearch1:${`${artist} ${title}`.trim()}`, cleanId, 'soundcloud', meta);
+    }
+    if (cleanId && await findCachedFile(cleanId)) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: true, isLocal: true, streamUrl: `http://127.0.0.1:${PORT}/api/local-track?id=${encodeURIComponent(cleanId)}` }));
+    }
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ success: false, error: 'could not extract audio stream' }));
+  }
+
   const cacheKey = (cleanId || trackUrl || `${artist}_${title}`).toLowerCase();
   if (cacheKey && (streamUrlCache.has(cacheKey) || (cleanId && streamUrlCache.has(cleanId)))) {
     const cached = streamUrlCache.get(cacheKey) || (cleanId ? streamUrlCache.get(cleanId) : null);
@@ -1987,7 +2029,8 @@ async function handleLocalTrack(req, res, trackId) {
       '.opus': 'audio/ogg; codecs=opus',
       '.webm': 'audio/webm',
       '.m4a': 'audio/mp4',
-      '.mp3': 'audio/mpeg'
+      '.mp3': 'audio/mpeg',
+      '.aac': 'audio/aac'
     };
     const contentType = mimeTypes[ext] || 'audio/mpeg';
 
@@ -4569,7 +4612,8 @@ const server = http.createServer(async (req, res) => {
     const trackUrl = parsedUrl.query.url || '';
     const trackId = parsedUrl.query.id || '';
     const platform = parsedUrl.query.platform || 'youtube';
-    prefetchTrack(trackUrl, trackId, platform);
+    const q = parsedUrl.query;
+    prefetchTrack(trackUrl, trackId, platform, q.title ? { title: q.title, artist: q.artist || '', duration: Number(q.duration) || 0, thumbnail: q.thumbnail || '' } : null);
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ success: true }));
   }
@@ -4751,7 +4795,7 @@ const server = http.createServer(async (req, res) => {
     let totalBytes = 0;
     try {
       const files = await fs.promises.readdir(CACHE_DIR);
-      const audioExtRegex = /\.(opus|webm|m4a|mp3)$/i;
+      const audioExtRegex = /\.(opus|webm|m4a|mp3|aac)$/i;
       for (const file of files) {
         if (audioExtRegex.test(file) && !file.includes('.temp.')) {
           const cleanId = file.replace(audioExtRegex, '');
@@ -4820,7 +4864,7 @@ const server = http.createServer(async (req, res) => {
   if (parsedUrl.pathname === '/api/clear-offline-library' && req.method === 'POST') {
     try {
       const files = await fs.promises.readdir(CACHE_DIR);
-      const audioExtRegex = /\.(opus|webm|m4a|mp3)$/i;
+      const audioExtRegex = /\.(opus|webm|m4a|mp3|aac)$/i;
       for (const file of files) {
         if (audioExtRegex.test(file)) {
           try { await fs.promises.unlink(path.join(CACHE_DIR, file)); } catch (e) {}

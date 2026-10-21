@@ -18,8 +18,19 @@
   "license": "MIT",
   "description": "made for humans, Riff - audio player.",
   "devDependencies": {
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/cli": "^8.5.3",
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/ios": "^8.5.3",
+    "@capacitor/share": "^8.0.3",
+    "buffer": "^6.0.3",
     "electron": "^41.7.1",
-    "electron-builder": "^26.15.3"
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2",
+    "events": "^3.3.0",
+    "path-browserify": "^1.0.1",
+    "youtubei.js": "^18.2.0"
   },
   "dependencies": {
     "cfonts": "^3.3.1",
@@ -49,6 +60,10 @@
       "!.github/**",
       "!dist/**",
       "!bin/**",
+      "!mobile/**",
+      "!www/**",
+      "!ios/**",
+      "!capacitor.config.json",
       "!*.md",
       "!strip_comments.js",
       "!.riff_progress.md",

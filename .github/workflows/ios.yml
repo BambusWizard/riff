@@ -1,0 +1,82 @@
+name: iOS build
+
+# Builds an unsigned Riff.ipa on a GitHub macOS runner and publishes it to the rolling
+# "ios-latest" release. Sideload it with Sideloadly or AltStore/SideStore, which sign it with your Apple ID.
+on:
+  push:
+    branches: [main, ios-port]
+    paths-ignore: ['**.md', 'LICENSE']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ios-build
+  cancel-in-progress: true
+
+jobs:
+  ipa:
+    runs-on: macos-15
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1' # desktop-only dev dependency, not needed here
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Build the web bundle
+        run: node mobile/build.mjs
+
+      - name: Sync into the Xcode project
+        run: npx cap sync ios
+
+      - name: Compile (unsigned)
+        run: |
+          xcodebuild -quiet \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            MARKETING_VERSION="$(node -p "require('./package.json').version.split('.').slice(0, 2).join('.')").${{ github.run_number }}" \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            build
+
+      - name: Package Riff.ipa
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/App.app Payload/
+          zip -qry Riff.ipa Payload
+          ls -lh Riff.ipa
+
+      - name: Write the SideStore / AltStore source
+        env:
+          RUN: ${{ github.run_number }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: node .github/sidestore-source.js
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Riff-ipa
+          path: Riff.ipa
+
+      - name: Publish to the ios-latest release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete ios-latest --cleanup-tag --yes 2>/dev/null || true
+          gh release create ios-latest Riff.ipa sidestore.json \
+            --prerelease \
+            --target "$GITHUB_SHA" \
+            --title "Riff for iPhone (latest build)" \
+            --notes "Unsigned build of ${GITHUB_SHA::7} (run ${{ github.run_number }}). Install with Sideloadly or AltStore/SideStore using your Apple ID. Free Apple IDs need re-signing every 7 days."

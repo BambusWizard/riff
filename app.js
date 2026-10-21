@@ -442,7 +442,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     myWaveActive: false,
     _isNaturalEnding: false,
     _skipRecordedFor: null,
-    isRightPanelOpen: true,
+    isRightPanelOpen: !(window.electronAPI && window.electronAPI.isMobile), // phones start on Home, Now Playing is a sheet
     lyricsMode: 'word',
     uiScale: savedScale,
     activePresetId: soundPersistenceEnabled ? (localStorage.getItem('riff_active_preset') || 'p_default') : 'p_default',
@@ -5244,6 +5244,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       state.isPlaying = true;
       document.body.classList.add('is-playing');
       updatePlayPauseButton(true, false);
+      // iPhone plays every song from disk, so download the next two (staggered) before they're needed
+      if (window.electronAPI && window.electronAPI.isMobile) {
+        [1, 2].forEach((ahead, k) => {
+          const next = state.queue && state.queue[state.queueIndex + ahead];
+          if (!next || !next.url || next.platform === 'local') return;
+          setTimeout(() => {
+            fetch(`http://127.0.0.1:${state.serverPort}/api/prefetch?url=${encodeURIComponent(next.url)}&id=${encodeURIComponent(next.id || '')}&platform=${next.platform || state.platform}&title=${encodeURIComponent(next.title || '')}&artist=${encodeURIComponent(next.artist || '')}&duration=${encodeURIComponent(next.duration || 0)}&thumbnail=${encodeURIComponent(next.thumbnail || '')}`).catch(() => {});
+          }, 2000 + k * 6000);
+        });
+      }
     });
 
     el.nativeAudio.addEventListener('canplay', () => {
@@ -10377,7 +10387,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (window.electronAPI && window.electronAPI.onWelcomeResult) window.electronAPI.onWelcomeResult((d) => applyWelcomeResult(d));
 
   function checkCompactLayout() {
-    const isMini = window.innerWidth <= 520;
+    // the tiny desktop mini-player window; phones get their own layout instead
+    const isMini = window.innerWidth <= 520 && !(window.electronAPI && window.electronAPI.isMobile);
     document.body.classList.toggle('mini', isMini);
   }
   window.addEventListener('resize', checkCompactLayout);
@@ -15463,6 +15474,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (el.btnDedupePlaylist) el.btnDedupePlaylist.addEventListener('click', removePlaylistDuplicates);
 
   restoreQueueState();
+
+  // small hook for the iPhone layout (mobile/mobile-ui.js)
+  window.RiffCore = {
+    state,
+    toast: (msg, kind) => showToast(msg, kind),
+    refreshBackground: () => updateCustomBg(),
+  };
+  window.dispatchEvent(new Event('riff:ready'));
 
   emitPluginEvent('ready');
 });

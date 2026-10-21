@@ -55,10 +55,11 @@ let html = readFileSync(join(root, 'index.html'), 'utf8');
 html = html
   .replace('<meta name="viewport"', '<meta name="viewport-desktop"')
   .replace('<head>', '<head>\n  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">'
-    // web build: "Add to Home Screen" opens it full screen like an app
+    // web build: "Add to Home Screen" opens it full screen like an app. The status bar is "black", not
+    // "black-translucent": with the translucent one iOS leaves a black strip under the tab bar
     + '\n  <link rel="manifest" href="pwa/manifest.webmanifest">\n  <link rel="apple-touch-icon" href="pwa/icon-180.png">'
     + '\n  <meta name="apple-mobile-web-app-capable" content="yes">\n  <meta name="mobile-web-app-capable" content="yes">'
-    + '\n  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">\n  <meta name="apple-mobile-web-app-title" content="Riff">'
+    + '\n  <meta name="apple-mobile-web-app-status-bar-style" content="black">\n  <meta name="apple-mobile-web-app-title" content="Riff">'
     + '\n  <meta name="theme-color" content="#121214">')
   .replace('<link rel="stylesheet" href="styles.css">', '<link rel="stylesheet" href="styles.css">\n  <link rel="stylesheet" href="mobile.css">')
   .replace('<script src="audio-engine.js"></script>', '<script src="mobile-bridge.js"></script>\n  <script src="audio-engine.js"></script>')

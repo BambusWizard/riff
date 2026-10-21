@@ -199,6 +199,13 @@
   const bio = document.getElementById('artist-profile-bio');
   if (bio) bio.addEventListener('click', () => bio.classList.toggle('expanded'));
 
+  // tab bar counters: hide the zeros
+  const markZero = (badge) => badge.classList.toggle('is-zero', !badge.textContent.trim() || badge.textContent.trim() === '0');
+  document.querySelectorAll('.sidebar .nav-badge').forEach((badge) => {
+    markZero(badge);
+    new MutationObserver(() => markZero(badge)).observe(badge, { childList: true, characterData: true, subtree: true });
+  });
+
   // settings that only make sense on desktop
   ['btn-hw-accel', 'btn-tray-on-close', 'btn-media-keys'].forEach((id) => {
     const row = document.getElementById(id) && document.getElementById(id).closest('.setting-item');

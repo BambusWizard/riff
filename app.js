@@ -8561,11 +8561,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  // at 0% intensity (the default) the theme is monochrome and a picked colour would change nothing
+  function ensureAccentVisible() {
+    if (state.themeIntensity >= 8) return;
+    state.themeIntensity = 50;
+    localStorage.setItem('riff_theme_intensity', '50');
+  }
+
   if (el.themeSwatches) {
     el.themeSwatches.forEach(sw => {
       sw.addEventListener('click', () => {
         state.themeAccent = sw.dataset.color;
         localStorage.setItem('riff_theme_accent', state.themeAccent);
+        ensureAccentVisible();
         if (state.themeMode === 'auto') {
           const targetMode = currentEffectiveMode || 'dark';
           state.themeMode = targetMode;
@@ -8580,6 +8588,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     el.customColorInput.addEventListener('input', (e) => {
       state.themeAccent = e.target.value;
       localStorage.setItem('riff_theme_accent', state.themeAccent);
+      ensureAccentVisible();
       if (state.themeMode === 'auto') {
         const targetMode = currentEffectiveMode || 'dark';
         state.themeMode = targetMode;
@@ -8601,6 +8610,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (el.valHue) el.valHue.textContent = h + '°';
       state.themeAccent = hslToHex(h, 55, 50);
       localStorage.setItem('riff_theme_accent', state.themeAccent);
+      ensureAccentVisible();
       if (state.themeMode === 'auto') {
         const targetMode = currentEffectiveMode || 'dark';
         state.themeMode = targetMode;

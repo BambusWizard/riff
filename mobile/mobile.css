@@ -14,7 +14,9 @@ html.is-mobile {
   -webkit-text-size-adjust: 100%;
   -webkit-tap-highlight-color: transparent;
 }
-html.is-mobile body { overscroll-behavior: none; touch-action: manipulation; }
+/* the page itself never scrolls or bounces, only the lists inside it (iOS otherwise drags the whole app) */
+html.is-mobile, html.is-mobile body { overflow: hidden !important; overscroll-behavior: none; }
+html.is-mobile body { touch-action: manipulation; }
 
 /* ---------- top bar ---------- */
 html.is-mobile .titlebar {
@@ -74,15 +76,22 @@ html.is-mobile .rail-action-group { flex-direction: row !important; gap: 0 !impo
 html.is-mobile .nav-active-indicator,
 html.is-mobile .rail-divider,
 html.is-mobile #btn-toggle-presets-drawer { display: none !important; }
-/* seven buttons share the width (desktop min-widths made the row overflow and clip the last one) */
-html.is-mobile .sidebar { overflow: hidden !important; padding-left: 6px !important; padding-right: 6px !important; }
-html.is-mobile .sidebar-nav { flex: 6 1 0 !important; min-width: 0 !important; }
-html.is-mobile .rail-action-group { flex: 1 1 0 !important; min-width: 0 !important; justify-content: center !important; }
+/* seven buttons in seven equal cells (the tabs and the playlists button live in different groups,
+   so the groups step aside and the buttons become the grid's items) */
+html.is-mobile .sidebar {
+  display: grid !important; grid-template-columns: repeat(7, 1fr) !important; justify-items: center !important;
+  align-content: center !important; overflow: hidden !important; padding-left: 4px !important; padding-right: 4px !important;
+}
+html.is-mobile .sidebar-nav,
+html.is-mobile .rail-action-group { display: contents !important; }
 html.is-mobile .nav-item,
 html.is-mobile .rail-icon-btn {
-  flex: 0 1 52px !important; width: auto !important; min-width: 0 !important; max-width: 52px !important;
-  height: 44px !important; padding: 0 !important; border-radius: 22px !important;
+  width: 52px !important; min-width: 0 !important; max-width: 100% !important;
+  height: 44px !important; padding: 0 !important; border-radius: 22px !important; margin: 0 !important;
 }
+/* counters only when there is something to count (mobile-ui.js marks zeros), tucked onto the icon's corner */
+html.is-mobile .sidebar .nav-badge.is-zero { display: none !important; }
+html.is-mobile .sidebar .nav-badge { transform: scale(0.85); transform-origin: left bottom; }
 /* only the current tab is highlighted: no desktop fills, no hover that sticks after a tap */
 html.is-mobile .nav-item:not(.active),
 html.is-mobile .rail-icon-btn:not(.active) { background: transparent !important; box-shadow: none !important; }
@@ -188,16 +197,25 @@ html.is-mobile body.np-open .visualizer-container,
 html.is-mobile body.np-open #btn-toggle-lyrics-panel { display: none !important; }
 
 /* ---------- views, settings and dialogs at phone width ---------- */
+/* the desktop settings page adds its own 24px/32px padding on top of the main area's 16px */
+html.is-mobile .settings-view { padding: 0 0 16px !important; gap: 12px !important; }
+html.is-mobile .settings-view > .section-title { margin: 0 4px !important; }
 html.is-mobile .settings-layout { flex-direction: column !important; gap: 12px !important; }
+/* category tabs: one row that scrolls sideways only */
 html.is-mobile .settings-nav {
   position: static !important;
   flex: 0 0 auto !important;
   flex-direction: row !important;
   overflow-x: auto !important;
+  overflow-y: hidden !important;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
   max-height: none !important;
   width: 100% !important;
   gap: 6px !important;
+  padding: 6px !important;
 }
+html.is-mobile .settings-nav::-webkit-scrollbar { display: none; }
 html.is-mobile .settings-nav-btn { flex: 0 0 auto !important; white-space: nowrap !important; }
 html.is-mobile .settings-card,
 html.is-mobile .modal-backdrop > * { max-width: calc(100vw - 24px) !important; }
@@ -415,9 +433,3 @@ html.is-mobile .artist-bio-snippet {
 html.is-mobile .artist-bio-snippet.expanded { -webkit-line-clamp: unset !important; line-clamp: unset !important; }
 html.is-mobile .artist-actions-bar { width: 100% !important; justify-content: center !important; margin-top: 4px !important; }
 html.is-mobile #btn-play-artist-tracks { width: 100% !important; justify-content: center !important; height: 44px !important; }
-
-/* Home Screen web app with a translucent status bar: iOS makes the viewport shorter than the screen by
-   the status bar height, leaving a black strip under the tab bar; a taller root fills it */
-@media (display-mode: standalone) {
-  html.is-mobile, html.is-mobile body { min-height: calc(100% + env(safe-area-inset-top, 0px)); }
-}

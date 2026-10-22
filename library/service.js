@@ -36,7 +36,8 @@ function loadConfig(dir) {
     cfg.users = { [crypto.randomBytes(16).toString('hex')]: 'main', [crypto.randomBytes(16).toString('hex')]: 'user2' };
     changed = true;
   }
-  for (const [k, v] of Object.entries({ port: 38510, maxGB: 20, proxy: '' })) if (cfg[k] === undefined) { cfg[k] = v; changed = true; }
+  const defaults = { port: 38510, maxGB: 20, proxy: '', tunnel: true, worker: 'https://riff-proxy.pages.dev', workerKey: '' };
+  for (const [k, v] of Object.entries(defaults)) if (cfg[k] === undefined) { cfg[k] = v; changed = true; }
   if (changed) { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(file, JSON.stringify(cfg, null, 2)); }
   return cfg;
 }
@@ -49,15 +50,15 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
 
   // ---- downloads: two at a time; a song the PC can't get waits for a phone to send its file ----
   const queue = [];
-  let active = 0;
+  const active = new Set(); // ids being downloaded right now: a phone asking again doesn't start a second download
   let toolsReady = null;
-  const enqueue = (song) => { if (song.status === 'pending' && !queue.includes(song.id)) { queue.push(song.id); pump(); } };
+  const enqueue = (song) => { if (song.status === 'pending' && !queue.includes(song.id) && !active.has(song.id)) { queue.push(song.id); pump(); } };
   const pump = () => {
-    while (active < 2 && queue.length) {
+    while (active.size < 2 && queue.length) {
       const song = store.get(queue.shift());
       if (!song || song.status !== 'pending') continue;
-      active += 1;
-      fetchSong(song).finally(() => { active -= 1; pump(); });
+      active.add(song.id);
+      fetchSong(song).finally(() => { active.delete(song.id); pump(); });
     }
   };
   async function fetchSong(song) {
@@ -173,14 +174,28 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
   // songs left pending last time (the PC was switched off mid-download) go back in the queue
   const resume = () => store.songs.filter((s) => s.status === 'pending').forEach(enqueue);
 
-  return { server, store, config: cfg, resume, idle: () => active === 0 && queue.length === 0 };
+  return { server, store, config: cfg, resume, idle: () => active.size === 0 && queue.length === 0 };
 }
 
 if (require.main === module) {
+  const { DATA_DIR } = require('../platform');
+  // the running service's and its tunnel's process ids: library/windows/stop.cmd (--stop) ends both (on Windows
+  // ending the service leaves its child cloudflared running otherwise)
+  const PID_FILE = path.join(DATA_DIR, 'library.pid');
+  const readPids = () => { try { return JSON.parse(fs.readFileSync(PID_FILE, 'utf8')); } catch (e) { return {}; } };
+  const kill = (pid) => { try { if (pid) { process.kill(pid); return true; } } catch (e) {} return false; };
+  if (process.argv.includes('--stop')) {
+    const pids = readPids();
+    kill(pids.tunnel);
+    console.log(kill(pids.service) ? 'Riff library stopped.' : 'Riff library is not running.');
+    fs.rmSync(PID_FILE, { force: true });
+    process.exit(0);
+  }
   const i = process.argv.indexOf('--dir');
   const dir = i > 0 && process.argv[i + 1] ? path.resolve(process.argv[i + 1]) : (process.env.RIFF_LIBRARY_DIR || DEFAULT_DIR);
   const tools = require('../tools');
   const { resolveBinary } = require('../platform');
+  const tunnel = require('./tunnel');
   // yt-dlp downloads; ffmpeg repacks YouTube's DASH audio into a plain m4a (iPhones play it reliably)
   const ensureTools = async () => {
     if (resolveBinary('yt-dlp') && resolveBinary('ffmpeg')) return;
@@ -190,12 +205,54 @@ if (require.main === module) {
     if (!st.ffmpeg) console.log(`! ffmpeg could not be installed (${st.progress.error.trim()}): YouTube songs stay in DASH m4a`);
   };
   const svc = createService({ dir, ensureTools });
-  svc.server.listen(svc.config.port, () => {
+  const cfg = svc.config;
+  const saveConfig = () => fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify(cfg, null, 2));
+  // the window (start.cmd) closes when the service ends; a failure stays readable for a while first
+  const fatal = (msg) => { console.log(msg); setTimeout(() => process.exit(1), 30000); };
+  svc.server.on('error', (e) => fatal(e.code === 'EADDRINUSE' ? `Riff library is already running (port ${cfg.port} is taken).` : `Riff library could not start: ${e.message}`));
+  process.on('uncaughtException', (e) => { svc.server.close(); fatal(`Riff library stopped on an error: ${e.stack || e.message}`); });
+
+  // the phones find the PC through the Riff worker, with the same access key as the app (asked once)
+  const askWorkerKey = () => new Promise((resolve) => {
+    if (cfg.workerKey || !process.stdin.isTTY) return resolve(cfg.workerKey || '');
+    const rl = require('readline').createInterface({ input: process.stdin, output: process.stdout });
+    rl.question('Access key (the one you entered in the Riff app) so phones can find this PC, or Enter to skip: ', (a) => {
+      rl.close();
+      cfg.workerKey = a.trim();
+      if (cfg.workerKey) saveConfig();
+      resolve(cfg.workerKey);
+    });
+  });
+  const startTunnel = async (pids) => {
+    if (!cfg.tunnel) return;
+    const key = await askWorkerKey();
+    if (!key) { console.log('no access key: phones reach the library only through a riff_library_url set by hand'); return; }
+    let bin;
+    try { bin = await tunnel.ensureCloudflared(console.log); } catch (e) { console.log(`! tunnel: ${e.message}`); return; }
+    const announce = async (url) => {
+      for (let n = 0; n < 5; n++) {
+        try { await tunnel.register(cfg.worker, key, url, cfg.users); console.log(`phones can reach it at ${url}`); return; } catch (e) {
+          console.log(`! could not tell the worker (${e.message})${n < 4 ? ', retrying' : ''}`);
+          await new Promise((r) => setTimeout(r, 15000));
+        }
+      }
+    };
+    tunnel.startTunnel(bin, cfg.port, announce, console.log, (pid) => { pids.tunnel = pid; fs.writeFileSync(PID_FILE, JSON.stringify(pids)); });
+  };
+
+  svc.server.listen(cfg.port, () => {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    const old = readPids();
+    kill(old.tunnel); // a tunnel left behind by a service that was ended the hard way
+    const pids = { service: process.pid };
+    fs.writeFileSync(PID_FILE, JSON.stringify(pids));
+    process.on('exit', () => { if (readPids().service === process.pid) fs.rmSync(PID_FILE, { force: true }); });
     const s = svc.store;
     console.log(`Riff library: ${dir}`);
-    console.log(`${s.songs.length} songs, ${(s.usedBytes() / 1024 ** 3).toFixed(2)} of ${svc.config.maxGB} GB, http://localhost:${svc.config.port}`);
-    console.log(`keys (config.json): ${Object.entries(svc.config.users).map(([k, v]) => `${v} = ${k}`).join(', ')}`);
+    console.log(`${s.songs.length} songs, ${(s.usedBytes() / 1024 ** 3).toFixed(2)} of ${cfg.maxGB} GB, http://localhost:${cfg.port}`);
+    console.log(`keys (config.json): ${Object.entries(cfg.users).map(([k, v]) => `${v} = ${k}`).join(', ')}`);
     svc.resume();
+    startTunnel(pids);
   });
 }
 

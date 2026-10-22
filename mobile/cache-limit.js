@@ -1,6 +1,8 @@
 // Keeps the downloaded-songs cache under the limit chosen in Settings (default 2 GB):
-// after each download, the songs touched longest ago are deleted first. The newest few always stay.
+// after each download, the songs touched longest ago are deleted first. The newest few always stay, and so do
+// songs still waiting to reach the song library on the PC (library-sync.js).
 const fs = require('./shims/fs');
+const path = require('path');
 
 const TRACKS = '/data/tracks';
 const KEEP_NEWEST = 4;
@@ -22,7 +24,9 @@ function enforceCacheLimit() {
   let total = files.reduce((n, f) => n + f.size, 0);
   if (total <= limit) return;
   files.sort((a, b) => a.mtime - b.mtime); // oldest first
-  const removable = files.slice(0, Math.max(0, files.length - KEEP_NEWEST));
+  const waiting = window.RiffLibrary ? window.RiffLibrary.keep() : new Set();
+  const removable = files.slice(0, Math.max(0, files.length - KEEP_NEWEST))
+    .filter((f) => !waiting.has(path.basename(f.path).replace(/\.[^.]+$/, '')));
   for (const f of removable) {
     if (total <= limit) break;
     try { fs.unlinkSync(f.path); total -= f.size; } catch (e) {}

@@ -394,7 +394,32 @@ applyRowBadges();
       });
       storageGroup.append(nightlyRow);
     }
-    storageGroup.append(limitRow, badgesRow, logRow);
+    // song library on the PC (library-sync.js): whether it is reachable and what is still waiting to go there
+    const libRow = document.createElement('div');
+    libRow.className = 'setting-item';
+    libRow.innerHTML = `
+      <div class="setting-item-top" style="align-items: center;">
+        <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0;">
+          <span class="setting-name">Song library</span>
+          <span class="lib-status" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Songs you finish or like are kept on your PC.</span>
+        </div>
+        <button class="btn-pill-primary" type="button">Sync</button>
+      </div>`;
+    const libStatus = libRow.querySelector('.lib-status');
+    const showLib = (s) => {
+      if (!s) return;
+      const waiting = s.waiting ? ` · ${s.waiting} waiting to be sent` : '';
+      libStatus.textContent = {
+        online: `PC connected · ${s.songs} songs${waiting}`,
+        syncing: `Sending to the PC…${waiting}`,
+        offline: `PC is off (start Riff Library on it)${waiting}`,
+        'not-set-up': `Not set up: needs the access key${waiting}`,
+      }[s.state] || `Songs you finish or like are kept on your PC.${waiting}`;
+    };
+    window.addEventListener('riff:library', (e) => showLib(e.detail));
+    libRow.querySelector('button').addEventListener('click', () => { if (window.RiffLibrary) window.RiffLibrary.run(); });
+    setTimeout(() => showLib(window.RiffLibrary && window.RiffLibrary.status()), 1000);
+    storageGroup.append(libRow, limitRow, badgesRow, logRow);
   }
 
   // artist bio is clamped to 3 lines on phones; tapping it expands / collapses

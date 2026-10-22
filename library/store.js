@@ -22,6 +22,10 @@ class Store {
     this.songs = [];
     this.rev = 0;
     this.load();
+    // pieces of downloads and uploads cut off when the service was stopped
+    for (const name of fs.readdirSync(this.songsDir)) {
+      if (/\.(part-|upload-)/.test(name)) fs.rmSync(path.join(this.songsDir, name), { force: true });
+    }
   }
 
   load() {

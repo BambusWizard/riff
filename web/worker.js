@@ -87,18 +87,44 @@ async function sync(req, env, user, origin) {
   return json({ error: 'method not allowed' }, 405);
 }
 
+// /__library: where the song library service on the user's PC (library/service.js) can be reached right now.
+// The service POSTs {url, keys: {<user>: <its library key for that user>}} each time its tunnel starts; a phone
+// GETs {url, key, at}: the address and its own library key, and then talks to the PC directly.
+async function library(req, env, user, origin) {
+  const json = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: { ...cors(origin), 'Content-Type': 'application/json' } });
+  if (!env.RIFF_DATA) return json({ error: 'storage not configured' }, 500);
+  const KEY = 'library-endpoint';
+  if (req.method === 'GET') {
+    const ep = (await env.RIFF_DATA.get(KEY, 'json')) || {};
+    return json({ url: ep.url || '', key: (ep.keys && ep.keys[user]) || '', at: ep.at || 0 });
+  }
+  if (req.method === 'POST') {
+    let body;
+    try { body = JSON.parse(await req.text()); } catch (e) { return json({ error: 'bad body' }, 400); }
+    const url = String(body.url || '');
+    if (url && !/^https:\/\/[a-z0-9.-]+(:\d+)?\/?$/i.test(url)) return json({ error: 'bad url' }, 400);
+    const keys = body.keys && typeof body.keys === 'object' ? body.keys : {};
+    await env.RIFF_DATA.put(KEY, JSON.stringify({ url, keys, at: Date.now(), by: user }));
+    return json({ ok: true });
+  }
+  return json({ error: 'method not allowed' }, 405);
+}
+
 export default {
   async fetch(req, env) {
     const origins = String(env.ALLOWED_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
     const origin = req.headers.get('origin') || '';
-    if (!origins.includes(origin)) return new Response('origin not allowed', { status: 403 });
+    const u = new URL(req.url);
+    // the library service on the PC registers its address from outside a browser: no Origin, the key alone
+    const fromService = u.pathname === '/__library' && req.method === 'POST' && !origin;
+    if (!fromService && !origins.includes(origin)) return new Response('origin not allowed', { status: 403 });
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(origin) });
 
-    const u = new URL(req.url);
     const user = userFor(env, req.headers.get('x-riff-key') || u.searchParams.get('k') || '');
     if (!user) return new Response('access key required', { status: 401, headers: cors(origin) });
 
     if (u.pathname === '/__sync') return sync(req, env, user, origin);
+    if (u.pathname === '/__library') return library(req, env, user, origin);
     if (u.pathname !== '/__proxy') return new Response('not found', { status: 404, headers: cors(origin) });
 
     let target;

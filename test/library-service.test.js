@@ -15,11 +15,12 @@ const config = { users: { [KEY]: 'main', [KEY2]: 'user2' }, port: 0, maxGB: 1, p
 const AUDIO = Buffer.alloc(200 * 1024, 7);
 
 // a service on a free port with a fake yt-dlp: `fails` downloads fail, then each writes AUDIO as m4a
-async function start(t, { fails = 0 } = {}) {
+async function start(t, { fails = 0, delayMs = 0 } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'riff-lib-'));
   const calls = [];
   const download = async (url, songsDir, base) => {
     calls.push(url);
+    if (delayMs) await new Promise((r) => setTimeout(r, delayMs));
     if (calls.length <= fails) throw new Error('blocked');
     fs.writeFileSync(path.join(songsDir, `${base}.m4a`), AUDIO);
     return { name: `${base}.m4a`, size: AUDIO.length };
@@ -131,4 +132,14 @@ test('deleting a song removes its file', async (t) => {
   await api(`/songs/${body.id}`, { method: 'DELETE' });
   assert.strictEqual(fs.existsSync(file), false);
   assert.strictEqual((await api('/catalog')).body.songs.length, 0);
+});
+
+test('a phone asking again while the PC is still downloading does not start a second download', async (t) => {
+  const { api, calls, settle } = await start(t, { delayMs: 150 });
+  await api('/ingest', { method: 'POST', body: song });
+  await new Promise((r) => setTimeout(r, 30));
+  await api('/ingest', { method: 'POST', body: song });
+  await api('/ingest', { key: KEY2, method: 'POST', body: song });
+  await settle();
+  assert.strictEqual(calls.length, 1);
 });

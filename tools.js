@@ -196,4 +196,4 @@ async function updateYtDlpIfManaged() {
   }
 }
 
-module.exports = { ensureTools, toolsStatus, updateYtDlpIfManaged, expectedHash, ytDlpAsset, ffmpegAsset };
+module.exports = { ensureTools, toolsStatus, updateYtDlpIfManaged, expectedHash, ytDlpAsset, ffmpegAsset, getText, downloadFile };

@@ -84,7 +84,8 @@ html = html
     + `\n  <meta name="riff-channel" content="${CHANNEL}">`)
   // loading screen until app.js is ready (and while a newer build loads); bridge.js hides it on riff:ready
   .replace('</head>', '  <style>#riff-splash{position:fixed;inset:0;z-index:2147483000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#121214;color:#e6e1e5;font:500 15px -apple-system,system-ui,sans-serif;transition:opacity .25s ease}'
-    + '#riff-splash.gone{opacity:0;pointer-events:none}#riff-splash i{width:14px;height:14px;border-radius:50%;background:#d0bcff;animation:riff-pulse 1s ease-in-out infinite alternate}'
+    // once gone it stops animating: the pulsing dot kept iOS drawing frames for as long as the app was open
+    + '#riff-splash.gone{opacity:0;pointer-events:none;visibility:hidden;transition:opacity .25s ease,visibility 0s .25s}#riff-splash.gone i{animation:none}#riff-splash i{width:14px;height:14px;border-radius:50%;background:#d0bcff;animation:riff-pulse 1s ease-in-out infinite alternate}'
     + '#riff-splash b{font-size:22px;letter-spacing:.01em}#riff-splash span{min-height:1em;font-size:12px;color:#938f99;font-variant-numeric:tabular-nums}'
     + '#riff-splash s{display:block;width:150px;height:3px;border-radius:2px;background:rgba(255,255,255,.12);overflow:hidden;text-decoration:none}'
     + '#riff-splash em{display:block;height:100%;width:3%;border-radius:2px;background:#d0bcff;transition:width .3s ease}'

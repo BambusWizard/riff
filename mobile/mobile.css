@@ -126,11 +126,30 @@ html.is-mobile .rail-icon-btn {
 /* counters only when there is something to count (mobile-ui.js marks zeros), tucked onto the icon's corner */
 html.is-mobile .sidebar .nav-badge.is-zero { display: none !important; }
 html.is-mobile .sidebar .nav-badge { transform: scale(0.85); transform-origin: left bottom; }
-/* only the current tab is highlighted: no desktop fills, no hover that sticks after a tap */
-html.is-mobile .nav-item:not(.active),
-html.is-mobile .rail-icon-btn:not(.active) { background: transparent !important; box-shadow: none !important; }
-html.is-mobile .nav-item.active,
-html.is-mobile .rail-icon-btn.active { background: var(--md-sys-color-secondary-container) !important; color: var(--md-sys-color-on-secondary-container) !important; }
+/* one highlight per tab, Material 3 style: a 56x32 pill behind the icon. The buttons themselves never fill
+   (desktop gave them a fill too, and iOS keeps :hover after a tap, so a tab showed a circle and an oval) */
+html.is-mobile .nav-item,
+html.is-mobile .rail-icon-btn {
+  background: transparent !important; background-image: none !important; box-shadow: none !important;
+  border-radius: 0 !important; transform: none !important; position: relative;
+}
+html.is-mobile .sidebar .nav-indicator {
+  width: 56px !important; height: 32px !important; border-radius: 16px !important;
+  background: transparent !important; transition: background-color .2s ease, transform .15s ease !important;
+}
+html.is-mobile .sidebar .nav-item.active .nav-indicator { background: var(--md-sys-color-secondary-container) !important; }
+html.is-mobile .sidebar .nav-item.active,
+html.is-mobile .sidebar .nav-item.active .nav-indicator { color: var(--md-sys-color-on-secondary-container) !important; }
+html.is-mobile .sidebar .rail-icon-btn::before {
+  content: ''; position: absolute; left: 50%; top: 50%; width: 56px; height: 32px; margin: -16px 0 0 -28px;
+  border-radius: 16px; background: transparent; transition: background-color .2s ease, transform .15s ease;
+}
+html.is-mobile .sidebar .rail-icon-btn.active::before { background: var(--md-sys-color-secondary-container); }
+html.is-mobile .sidebar .rail-icon-btn.active { color: var(--md-sys-color-on-secondary-container) !important; }
+html.is-mobile .sidebar .rail-icon-btn svg { position: relative; }
+/* a tap squeezes the pill a little instead of reshaping the button */
+html.is-mobile .sidebar .nav-item:active .nav-indicator,
+html.is-mobile .sidebar .rail-icon-btn:active::before { transform: scale(.92); }
 
 /* playlists drawer: a bottom sheet instead of a fly-out from the rail */
 html.is-mobile .rail-drawer {

@@ -147,8 +147,9 @@ window.fetch = async (input, init = {}) => {
     r = await call(url, init);
   }
   if (r.file) return pageFetch(await fileUrlFor(r.file));
-  const body = window.RiffLibrary && r.status === 200 ? window.RiffLibrary.searchResults(url, r.body) : r.body;
-  return new Response(r.status === 204 ? null : body, { status: r.status, headers: r.headers });
+  // the song library's names and songs in search results and artist pages (library-sync.js)
+  if (window.RiffLibrary && r.status !== 204) r = { ...r, ...window.RiffLibrary.adjust(url, r.status, r.body) };
+  return new Response(r.status === 204 ? null : r.body, { status: r.status, headers: r.headers });
 };
 
 // <audio src> and <img src> pointing at the local server get swapped for real file URLs.

@@ -54,5 +54,6 @@ if (process.argv.includes('--watch')) {
   const changed = (name) => { if (!name || /(^|[\\/])\.|~$/.test(name)) return; clearTimeout(timer); timer = setTimeout(rebuild, 200); };
   for (const f of ['app.js', 'styles.css', 'index.html', 'audio-engine.js', 'server.js', 'm3shapes.js']) watch(join(root, f), () => changed(f));
   watch(join(root, 'mobile'), { recursive: true }, (e, name) => changed(name));
+  watch(join(root, 'library'), { recursive: true }, (e, name) => changed(name)); // names.js is in the phone's bundle
   rebuild();
 }

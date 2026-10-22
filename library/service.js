@@ -43,7 +43,7 @@ function loadConfig(dir) {
     cfg.users = { [crypto.randomBytes(16).toString('hex')]: 'main', [crypto.randomBytes(16).toString('hex')]: 'user2' };
     changed = true;
   }
-  const defaults = { port: 38510, maxGB: 20, proxy: '', tunnel: true, worker: 'https://riff-proxy.pages.dev', workerKey: '' };
+  const defaults = { port: 38510, maxGB: 20, proxy: '', tunnel: true, worker: 'https://riff-proxy.pages.dev', workerKey: '', backupDir: '' };
   for (const [k, v] of Object.entries(defaults)) if (cfg[k] === undefined) { cfg[k] = v; changed = true; }
   if (changed) { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(file, JSON.stringify(cfg, null, 2)); }
   return cfg;
@@ -301,6 +301,15 @@ if (require.main === module) {
     console.log(`keys (config.json): ${Object.entries(cfg.users).map(([k, v]) => `${v} = ${k}`).join(', ')}`);
     console.log(`library page (names to check): http://localhost:${cfg.port}/ui`);
     svc.resume();
+    // backups (backup.js): today's copy of the catalog, and the mirror in backupDir, now and every 15 minutes
+    const backup = require('./backup');
+    const keepSafe = () => {
+      try { backup.snapshot(dir); } catch (e) { console.log(`! catalog copy: ${e.message}`); }
+      if (!cfg.backupDir) return;
+      try { const n = backup.mirror(dir, path.resolve(cfg.backupDir)); if (n) console.log(`backup: ${n} files copied to ${cfg.backupDir}`); } catch (e) { console.log(`! backup to ${cfg.backupDir}: ${e.message}`); }
+    };
+    setTimeout(keepSafe, 60 * 1000);
+    setInterval(keepSafe, 15 * 60 * 1000);
     startTunnel(pids);
   });
 }

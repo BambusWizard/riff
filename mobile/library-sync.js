@@ -45,6 +45,15 @@ function applyNames() {
 // a search's words in a song's names (any order, no case, accents or punctuation)
 const words = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/ё/g, 'е').split(/[^\p{L}\p{N}]+/u).filter(Boolean);
 
+const { artistSimilarity, similarity, parseName } = require('../library/names');
+
+// another upload of a song the library already has ("Song (Official Video)" by the artist's channel): the library's
+// copy stands for it, so the list doesn't show the song twice
+const sameSong = (t, song) => {
+  const n = parseName(t.title, t.artist);
+  return similarity(n.title, song.title) >= 0.9 && artistSimilarity(n.artist, song.artist) >= 0.85;
+};
+
 module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, fileUrlFor, log }) {
   const cleanId = (id) => String(id || '').replace(/[^a-zA-Z0-9_-]/g, '_'); // server.js cleanTrackId
   const keyOf = (t) => `${t.platform}:${t.id}`;
@@ -239,14 +248,55 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
         const have = new Set(words(`${song.artist} ${song.title} ${song.album}`));
         if (want.length && want.every((w) => [...have].some((h) => h.startsWith(w))) && !song.sources.some((k) => shown.has(k))) hits.push(asTrack(song));
       }
-      data.tracks = [...hits.slice(0, 5), ...data.tracks];
+      const lead = hits.slice(0, 5);
+      const libSongs = [...lead, ...data.tracks.filter((t) => t.inLibrary)].map((t) => bySource.get(keyOf(t)));
+      data.tracks = [...lead, ...data.tracks.filter((t) => t.inLibrary || !libSongs.some((song) => sameSong(t, song)))];
     }
     return JSON.stringify(data);
   };
 
+  // ---- artist pages: the artist's library songs first; an artist the services don't know (or can't be reached
+  // for) still gets a page from the library ----
+  const songsBy = (name) => {
+    const seen = new Set();
+    const out = [];
+    for (const song of bySource.values()) {
+      if (seen.has(song.id)) continue;
+      seen.add(song.id);
+      if (artistSimilarity(song.artist, name) >= 0.85) out.push(song);
+    }
+    return out.sort((a, b) => (a.album || '').localeCompare(b.album || '') || a.title.localeCompare(b.title));
+  };
+  const artistResults = (url, status, body) => {
+    if (!url.includes('/api/artist?') || !bySource.size) return null;
+    const name = new URL(url).searchParams.get('name') || '';
+    const mine = songsBy(name);
+    let data = null;
+    try { data = JSON.parse(body); } catch (e) {}
+    if (status === 200 && data && data.success && data.artist && Array.isArray(data.artist.tracks)) {
+      const names = {};
+      for (const [k, song] of bySource) if (song.named) names[k] = { title: song.title, artist: song.artist, cover: song.cover };
+      for (const t of data.artist.tracks) { renameTrack(t, names); if (bySource.has(keyOf(t))) t.inLibrary = true; }
+      const shown = new Set(data.artist.tracks.map(keyOf));
+      const lead = mine.filter((song) => !song.sources.some((k) => shown.has(k)));
+      data.artist.tracks = [...lead.map(asTrack), ...data.artist.tracks.filter((t) => t.inLibrary || !mine.some((song) => sameSong(t, song)))];
+      return { status, body: JSON.stringify(data) };
+    }
+    if (!mine.length) return null;
+    const artist = { name: mine[0].artist, bio: '', avatar: (mine.find((song) => song.cover) || {}).cover || '', isVerified: false, tracks: mine.map(asTrack) };
+    return { status: 200, body: JSON.stringify({ success: true, artist }) };
+  };
+
+  // bridge.js hands every answer of the in-app server through here
+  const adjust = (url, status, body) => {
+    const a = artistResults(url, status, body);
+    if (a) return a;
+    return { status, body: status === 200 ? searchResults(url, body) : body };
+  };
+
   return {
     streamFor,
-    searchResults,
+    adjust,
     status: () => ({ ...status }),
     run,
     // cleanIds of songs whose files must stay until the PC has them (cache-limit.js)

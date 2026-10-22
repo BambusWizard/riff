@@ -14,6 +14,7 @@ test('junk in brackets goes, versions stay', () => {
   assert.strictEqual(cleanTitle('Song (Live at Wembley)'), 'Song (Live at Wembley)');
   assert.strictEqual(cleanTitle('Song | Album 2020'), 'Song');
   assert.strictEqual(cleanTitle('Song #shorts #music'), 'Song');
+  assert.strictEqual(cleanTitle('Song (Official Music Video) (1987)'), 'Song');
 });
 
 test('channel names lose their decorations', () => {

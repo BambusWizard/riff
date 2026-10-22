@@ -11,7 +11,7 @@ const SEPARATOR = /\s+[-–—|]\s+|\s+[-–—]\s*|\s*[-–—]\s+/;
 
 function cleanTitle(s) {
   let t = String(s || '');
-  t = t.replace(/[(\[【]([^)\]】]*)[)\]】]/g, (all, inner) => (JUNK.test(inner) ? ' ' : all));
+  t = t.replace(/[(\[【]([^)\]】]*)[)\]】]/g, (all, inner) => (JUNK.test(inner) || /^\s*\d{4}\s*$/.test(inner) ? ' ' : all)); // "(1987)" too
   t = t.replace(/\s*(\||\/\/)\s.*$/, ''); // "Song | Album 2020", "Song // Channel"
   t = t.replace(/#\S+/g, ' '); // hashtags
   return t.replace(/\s+/g, ' ').replace(/\s+([,.!?)])/g, '$1').trim();

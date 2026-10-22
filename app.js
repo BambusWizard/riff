@@ -6893,7 +6893,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function initListReordering({ container, itemSelector, setOrder, canDragItem, isFilterActive }) {
-    if (!container) return;
+    // phones: a finger on a list scrolls it, it never picks a song up
+    if (!container || document.documentElement.classList.contains('is-mobile')) return;
 
     let draggedItem = null;
     let startX = 0;

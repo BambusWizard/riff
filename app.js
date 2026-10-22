@@ -716,29 +716,31 @@ document.addEventListener('DOMContentLoaded', async () => {
       surfSatScale: 1.0,
       contSatScale: 1.0
     },
+    // the styles differ in how much of the accent reaches backgrounds (surf) and highlights (cont);
+    // they used to be a few percent apart, which nobody could see
     'tonal-spot': {
       label: 'Tonal spot',
       secHueShift: 0,
       tertHueShift: 60,
-      priSatScale: 1.0,
-      surfSatScale: 0.8,
-      contSatScale: 0.9
+      priSatScale: 0.85,
+      surfSatScale: 1.6,
+      contSatScale: 1.6
     },
     expressive: {
       label: 'Expressive',
       secHueShift: 60,
       tertHueShift: 120,
       priSatScale: 1.25,
-      surfSatScale: 1.5,
-      contSatScale: 1.3
+      surfSatScale: 3.0,
+      contSatScale: 2.2
     },
     vibrant: {
       label: 'Vibrant',
       secHueShift: 0,
       tertHueShift: 60,
-      priSatScale: 1.4,
-      surfSatScale: 1.2,
-      contSatScale: 1.4
+      priSatScale: 1.5,
+      surfSatScale: 2.2,
+      contSatScale: 2.6
     },
     neutral: {
       label: 'Neutral',
@@ -1391,6 +1393,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const mono = intensity < 8;
     updateMeshGradient(mono ? '#9E9E9E' : hexColor, mono ? '#757575' : resolvedAccent2, mode);
     refreshCachedThemeColors();
+    window.dispatchEvent(new CustomEvent('riff:theme', { detail: { mode, intensity, isAuto } }));
   }
 
   function updateThemeFromState() {
@@ -1400,7 +1403,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         analyzeCover(coverThumb).then(analysis => {
           if (state.themeMode !== 'auto') return;
 
-          const derivedMode = analysis.luminance > 0.58 ? 'light' : 'dark';
+          // phones: always dark, a bright cover only lifts the brightness
+          const phone = document.documentElement.classList.contains('is-mobile');
+          const derivedMode = !phone && analysis.luminance > 0.58 ? 'light' : 'dark';
           const derivedIntensity = Math.min(85, Math.max(20, Math.round(analysis.saturation * 100 * 0.9)));
           let derivedBrightness;
           if (derivedMode === 'dark') {

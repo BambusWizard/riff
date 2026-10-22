@@ -617,3 +617,21 @@ applyRowBadges();
   }
   group.prepend(row);
 })();
+
+// Palette style: what it does, and why it does nothing at 0% colour intensity (the theme is then plain
+// black/white/grey and has no accent to spread)
+(() => {
+  const row = document.getElementById('setting-palette-style');
+  if (!row) return;
+  const note = document.createElement('span');
+  note.className = 'palette-note';
+  const top = row.querySelector('.setting-item-top');
+  (top || row).insertAdjacentElement('afterend', note);
+  window.addEventListener('riff:theme', (e) => {
+    const mono = e.detail.intensity < 8;
+    row.classList.toggle('is-disabled', mono);
+    note.textContent = mono
+      ? 'Raise Color intensity above 0% to use it: with no colour the theme is black and white.'
+      : 'How the accent colour spreads: Classic, Tonal spot (softer, tinted backgrounds), Expressive (shifted hues, coloured backgrounds), Vibrant (strongest colour), Neutral (almost grey).';
+  });
+})();

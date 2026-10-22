@@ -181,7 +181,8 @@ html.is-mobile .playbar {
   bottom: calc(var(--tabbar-h) + var(--safe-bottom) + 6px) !important;
   top: auto !important;
   height: var(--mini-h) !important;
-  padding: 0 8px 0 8px !important;
+  /* 11px on the left = the gap above and below the 42px cover in the 64px bar */
+  padding: 0 8px 0 11px !important;
   border-radius: 18px !important;
   display: flex !important;
   align-items: center !important;
@@ -190,10 +191,10 @@ html.is-mobile .playbar {
   width: auto !important;
   transition: none !important;
 }
-html.is-mobile .playbar-left { flex: 1 1 auto !important; min-width: 0 !important; gap: 10px !important; width: auto !important; }
+html.is-mobile .playbar-left { flex: 1 1 auto !important; min-width: 0 !important; gap: 10px !important; width: auto !important; padding-left: 0 !important; }
 /* the desktop cover (72px with a 120px shape ring) is taller than the mini player; scale it to fit */
 html.is-mobile #playbar-artwork-wrapper,
-html.is-mobile #playbar-artwork-wrapper .m3c-wrap { width: 42px !important; height: 42px !important; min-width: 42px !important; flex: 0 0 42px !important; margin: 0 0 0 6px !important; top: 0 !important; }
+html.is-mobile #playbar-artwork-wrapper .m3c-wrap { width: 42px !important; height: 42px !important; min-width: 42px !important; flex: 0 0 42px !important; margin: 0 !important; top: 0 !important; }
 html.is-mobile #playbar-artwork-wrapper .m3c-wrap { margin: 0 !important; }
 html.is-mobile #playbar-artwork-wrapper canvas { width: 70px !important; height: 70px !important; }
 html.is-mobile .playbar-left .track-meta { max-width: none !important; flex: 1 1 auto !important; }

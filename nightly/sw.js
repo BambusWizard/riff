@@ -1,7 +1,7 @@
 // Web build only: keeps the app's own files on the phone so the Home Screen app opens without internet.
 // build.mjs fills in VERSION and SHELL (every file of this build, with the same ?v= the page asks for).
-const VERSION = '30af584';
-const SHELL = ["index.html","pwa/manifest.webmanifest","pwa/icon-180.png","styles.css?v=30af584","mobile.css?v=30af584","assets/icon.png","mobile-bridge.js?v=30af584","audio-engine.js?v=30af584","m3shapes.js?v=30af584","lyrics-rtl.js?v=30af584","track-sort.js?v=30af584","search-text.js?v=30af584","library-tools.js?v=30af584","app.js?v=30af584","mobile-ui.js?v=30af584","assets/hls.min.js","pwa/icon-192.png","pwa/icon-512.png"];
+const VERSION = '635b5ed';
+const SHELL = ["index.html","pwa/manifest.webmanifest","pwa/icon-180.png","styles.css?v=635b5ed","mobile.css?v=635b5ed","assets/icon.png","mobile-bridge.js?v=635b5ed","audio-engine.js?v=635b5ed","m3shapes.js?v=635b5ed","lyrics-rtl.js?v=635b5ed","track-sort.js?v=635b5ed","search-text.js?v=635b5ed","library-tools.js?v=635b5ed","app.js?v=635b5ed","mobile-ui.js?v=635b5ed","assets/hls.min.js","pwa/icon-192.png","pwa/icon-512.png"];
 const CHANNEL = 'nightly';
 // per channel: stable's worker (scope /riff/) must not throw away nightly's files (/riff/nightly/) or back
 const PREFIX = `riff-${CHANNEL}-`;
@@ -55,10 +55,12 @@ self.addEventListener('fetch', (e) => {
   }
 
   // files of this build never change; the rest (fonts, the plugin editor) is saved the first time it is used
-  e.respondWith(caches.match(req).then((hit) => hit || fetch(req).then((r) => {
+  // a request that never answers fails after 20 s instead of hanging the page's start for good (the page's
+  // watchdog then reloads it)
+  e.respondWith(caches.match(req).then((hit) => hit || fromNetwork(req, 20000).then((r) => {
     if (r.ok || (fonts && r.type === 'opaque')) { const copy = r.clone(); caches.open(CACHE).then((c) => c.put(req, copy)); }
     return r;
-  })));
+  })).catch(() => Response.error()));
 });
 
 let trimTimer = null;

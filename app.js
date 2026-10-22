@@ -2901,16 +2901,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     initAudioContext();
     el.nativeAudio.preload = 'auto';
 
-    try {
-      el.nativeAudio.pause();
-      el.nativeAudio.removeAttribute('src');
-      el.nativeAudio.load();
-    } catch (e) {}
-    // phones: keep the page awake in the background until the new song plays (mobile/bridge.js)
+    // phones: instead of stopping, the player plays silence until the new song is ready, so iOS keeps the
+    // page awake in the background (mobile/bridge.js)
     if (window.__riffKeepAlive) {
-      window.__riffKeepAlive.start();
+      window.__riffKeepAlive.start(el.nativeAudio);
+      document.body.classList.remove('is-playing'); // the old song's 'pause' event is hidden along with the silence
       try {
         if (track.duration > 0) navigator.mediaSession.setPositionState({ duration: track.duration, playbackRate: 1, position: 0 });
+      } catch (e) {}
+    } else {
+      try {
+        el.nativeAudio.pause();
+        el.nativeAudio.removeAttribute('src');
+        el.nativeAudio.load();
       } catch (e) {}
     }
 
@@ -3061,7 +3064,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (err) {
       if (err.name === 'AbortError') return;
       if (currentToken === state.loadToken) {
-        if (window.__riffKeepAlive) window.__riffKeepAlive.stop();
+        if (window.__riffKeepAlive) window.__riffKeepAlive.stop(el.nativeAudio);
         console.warn('Track playback notice:', err);
         updatePlayPauseButton(false, false);
         if (el.trackLoadingOverlay) el.trackLoadingOverlay.classList.add('hidden');
@@ -5255,13 +5258,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     el.nativeAudio.addEventListener('playing', () => {
-      if (window.__riffKeepAlive) {
-        window.__riffKeepAlive.stop(() => {
-          if (el.nativeAudio.paused || !('mediaSession' in navigator)) return;
-          navigator.mediaSession.playbackState = 'playing';
-          updateMediaPositionState();
-        });
-      }
       state.isPlaying = true;
       document.body.classList.add('is-playing');
       updatePlayPauseButton(true, false);

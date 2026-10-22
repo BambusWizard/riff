@@ -143,14 +143,15 @@ function patchSrc(proto) {
     get() { return this.__riffSrc !== undefined ? this.__riffSrc : desc.get.call(this); },
     set(v) {
       v = String(v);
-      if (!v.startsWith(BASE)) { this.__riffSrc = undefined; this.__riffPending = null; desc.set.call(this, v); return; }
+      if (!v.startsWith(BASE)) { endSilence(this); this.__riffSrc = undefined; this.__riffPending = null; desc.set.call(this, v); return; }
       this.__riffSrc = v;
       this.__riffPending = resolveLocalUrl(v)
-        .then((real) => { if (this.__riffSrc === v) desc.set.call(this, real); })
+        .then((real) => { if (this.__riffSrc === v) { endSilence(this); desc.set.call(this, real); } })
         .catch((e) => { console.warn('[riff]', e.message); if (this.__riffSrc === v) this.dispatchEvent(new Event('error')); });
     },
   });
 }
+const realSrc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'src'); // the unpatched setter
 patchSrc(HTMLMediaElement.prototype);
 patchSrc(HTMLImageElement.prototype);
 
@@ -160,7 +161,9 @@ HTMLMediaElement.prototype.play = function () {
 };
 
 // iOS suspends a page in the background within seconds of its audio stopping, so a song switched from the
-// lock screen never finished downloading. A silent loop keeps the page awake while the next song loads.
+// lock screen never finished downloading. While a song loads, the player itself keeps playing a silent loop:
+// iOS sees one uninterrupted playback (a second <audio> confused its lock screen), and the app sees none of
+// it, since the loop's events and times are hidden until the real song's file is set.
 function silentWavUrl() {
   const rate = 8000, n = rate; // one second, 8-bit mono
   const b = new Uint8Array(44 + n);
@@ -172,21 +175,39 @@ function silentWavUrl() {
   str(36, 'data'); v.setUint32(40, n, true); b.fill(128, 44);
   return URL.createObjectURL(new Blob([b], { type: 'audio/wav' }));
 }
-const keepAlive = new Audio();
-keepAlive.loop = true;
-keepAlive.src = silentWavUrl();
+const SILENT = silentWavUrl();
+const MEDIA_EVENTS = ['loadstart', 'progress', 'suspend', 'abort', 'error', 'emptied', 'stalled', 'loadedmetadata', 'loadeddata',
+  'canplay', 'canplaythrough', 'playing', 'waiting', 'seeking', 'seeked', 'ended', 'durationchange', 'timeupdate', 'play', 'pause', 'ratechange'];
+// media events don't bubble but do pass the capture phase, so stopping them at window keeps them from the element's listeners
+for (const t of MEDIA_EVENTS) window.addEventListener(t, (e) => { if (e.target && e.target.__riffSilent) e.stopImmediatePropagation(); }, true);
+for (const prop of ['currentTime', 'duration']) {
+  const d = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, prop);
+  Object.defineProperty(HTMLMediaElement.prototype, prop, {
+    configurable: true,
+    get() { return this.__riffSilent ? (prop === 'duration' ? NaN : 0) : d.get.call(this); },
+    set: d.set,
+  });
+}
+function endSilence(audio) {
+  if (!audio.__riffSilent) return;
+  audio.loop = false;
+  audio.__riffSilent = false;
+}
 window.__riffKeepAlive = {
-  start() { keepAlive.play().catch(() => {}); },
-  // after() runs once the silent loop has really stopped: iOS then shows the lock screen as paused,
-  // so the app tells it again that the song is playing
-  stop(after) {
-    if (keepAlive.paused) return;
-    if (after) keepAlive.addEventListener('pause', () => { setTimeout(after, 50); setTimeout(after, 1000); }, { once: true });
-    keepAlive.pause();
+  start(audio) {
+    audio.__riffSilent = true;
+    audio.loop = true;
+    realSrc.set.call(audio, SILENT);
+    realPlay.call(audio).catch(() => {});
+  },
+  stop(audio) {
+    if (!audio.__riffSilent) return;
+    audio.pause();
+    audio.removeAttribute('src');
+    audio.load();
+    endSilence(audio);
   },
 };
-// iOS only lets a media element start without a tap once a tap has started it
-document.addEventListener('touchend', () => { keepAlive.play().then(() => keepAlive.pause()).catch(() => {}); }, { once: true, capture: true });
 
 // <img src="..."> written as HTML strings never hit the setter above.
 new MutationObserver((muts) => {

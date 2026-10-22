@@ -41,6 +41,13 @@ function applyNames() {
     }
     if (changed) localStorage.setItem(key, JSON.stringify(list));
   }
+  // later in the session (a new catalog): the app's own copies of the lists too, or its next save would put the
+  // old names back
+  const state = window.RiffCore && window.RiffCore.state;
+  if (state) {
+    for (const list of [state.favorites, state.history]) if (Array.isArray(list)) for (const t of list) renameTrack(t, names);
+    if (Array.isArray(state.playlists)) for (const pl of state.playlists) if (pl && Array.isArray(pl.tracks)) for (const t of pl.tracks) renameTrack(t, names);
+  }
 }
 
 // a search's words in a song's names (any order, no case, accents or punctuation)
@@ -99,12 +106,36 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
   }
   // likes made on this phone (the other phone reports its own; a library pulled from the sync isn't a new like)
   const FAV = 'devsize_favorites';
+  // A liked YouTube upload gets a real artist and title at once, even with the PC off: "МУККА - Song (Official
+  // Video)" by the channel "magic boy" is "Song" by "МУККА" (the library's names, when it has the song)
+  const likedName = (t) => {
+    let names = {};
+    try { names = JSON.parse(localStorage.getItem(NAMES) || '{}'); } catch (e) {}
+    let n = names[keyOf(t)];
+    if (!n && t.platform === 'youtube') {
+      const p = parseName(t.title, t.artist);
+      if (p.title && p.artist && (p.title !== t.title || p.artist !== t.artist)) n = { title: p.title, artist: p.artist };
+    }
+    if (!n) return false;
+    const state = window.RiffCore && window.RiffCore.state;
+    const mine = state && Array.isArray(state.favorites) && state.favorites.find((f) => f && keyOf(f) === keyOf(t));
+    return [t, mine].filter(Boolean).map((x) => renameTrack(x, { [keyOf(t)]: n })).some(Boolean);
+  };
   const ids = (v) => { try { return new Set((JSON.parse(v) || []).map((t) => t && `${t.platform}:${t.id}`)); } catch (e) { return new Set(); } };
   const setItem = Storage.prototype.setItem;
   Storage.prototype.setItem = function (k, v) {
     if (this === localStorage && k === FAV) {
       const before = ids(localStorage.getItem(FAV));
-      try { for (const t of JSON.parse(v) || []) if (t && !before.has(`${t.platform}:${t.id}`)) add(t, 'liked'); } catch (e) {}
+      try {
+        const list = JSON.parse(v) || [];
+        let renamed = false;
+        for (const t of list) {
+          if (!t || before.has(`${t.platform}:${t.id}`)) continue;
+          add(t, 'liked'); // the upload's own names go to the PC, which looks the song up from them
+          if (likedName(t)) renamed = true;
+        }
+        if (renamed) v = JSON.stringify(list);
+      } catch (e) {}
     }
     return setItem.call(this, k, v);
   };

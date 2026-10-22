@@ -212,3 +212,20 @@
     if (row) row.style.display = 'none';
   });
 })();
+
+// search sources: a filter button next to the search bar opens the four engine buttons as a menu
+(() => {
+  const box = document.querySelector('.platform-switch-container');
+  const pills = box && box.querySelector('.platform-pill-switch');
+  if (!pills) return;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'platform-filter-btn';
+  btn.title = 'Search sources';
+  btn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z"/></svg>';
+  box.prepend(btn);
+  const close = () => box.classList.remove('open');
+  btn.addEventListener('click', (e) => { e.stopPropagation(); box.classList.toggle('open'); });
+  pills.addEventListener('click', (e) => { if (e.target.closest('.platform-btn')) close(); }); // app.js switches the source
+  document.addEventListener('click', (e) => { if (!box.contains(e.target)) close(); });
+})();

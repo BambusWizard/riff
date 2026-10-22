@@ -36,7 +36,37 @@ html.is-mobile .top-nav {
   padding: 0 16px !important;
 }
 html.is-mobile .search-box-wrapper { flex: 1 1 auto !important; min-width: 0 !important; width: auto !important; max-width: none !important; }
-html.is-mobile .search-box { width: 100% !important; height: 42px !important; }
+html.is-mobile .search-box { width: 100% !important; height: 42px !important; padding: 0 6px 0 16px !important; }
+html.is-mobile .search-box input { min-width: 0 !important; width: 100% !important; }
+html.is-mobile .search-clear-btn { flex-shrink: 0 !important; width: 32px; height: 32px; margin-left: 4px; }
+/* search sources: a filter button next to the search bar; the four engine buttons drop down from it (mobile-ui.js) */
+html.is-mobile .platform-switch-container { flex: 0 0 auto !important; margin: 0 !important; overflow: visible !important; z-index: 3350 !important; }
+html.is-mobile .platform-filter-btn {
+  width: 42px; height: 42px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  border: none; border-radius: var(--md-shape-corner-full); cursor: pointer;
+  background: var(--md-sys-color-surface-container); color: var(--md-sys-color-on-surface-variant);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+html.is-mobile .platform-switch-container.open .platform-filter-btn {
+  background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container);
+}
+html.is-mobile .platform-pill-switch {
+  position: absolute; top: calc(100% + 8px); right: 0;
+  flex-direction: column; min-width: 210px; padding: 8px !important; gap: 2px !important;
+  border-radius: 20px !important;
+  background: var(--md-sys-color-surface-container-high-solid, #2B2D31) !important;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+  opacity: 0; transform: translateY(-6px) scale(0.97); transform-origin: top right;
+  pointer-events: none; visibility: hidden;
+  transition: opacity 0.15s ease, transform 0.2s cubic-bezier(0.2, 0, 0, 1), visibility 0s linear 0.2s;
+}
+html.is-mobile .platform-switch-container.open .platform-pill-switch {
+  opacity: 1; transform: none; pointer-events: auto; visibility: visible;
+  transition: opacity 0.15s ease, transform 0.2s cubic-bezier(0.2, 0, 0, 1);
+}
+html.is-mobile .platform-btn { justify-content: flex-start !important; padding: 12px 14px !important; gap: 12px !important; font-size: 15px !important; border-radius: 14px !important; }
+html.is-mobile .platform-btn span { display: inline-block !important; max-width: none !important; opacity: 1 !important; margin: 0 !important; }
 
 /* ---------- main area ---------- */
 html.is-mobile .app-layout {

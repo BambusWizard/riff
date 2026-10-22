@@ -1317,6 +1317,37 @@ async function downloadTrackToDiskOnce(trackUrl, trackId, platform, meta = {}) {
   });
 }
 
+// YouTube often answers the web build's Cloudflare addresses with "confirm you're not a bot". The same song
+// from Yandex Music (full length with the account's Plus) is the next best source, matched by title and length.
+function cleanSongTitle(s) {
+  return String(s || '').replace(/\([^)]*\)|\[[^\]]*\]/g, ' ').replace(/\b(official|music|video|audio|lyrics?|hd|4k|remastered)\b/gi, ' ').replace(/\s+/g, ' ').trim();
+}
+
+async function yandexMatch(title, artist, duration) {
+  const t = cleanSongTitle(title);
+  const a = cleanSongTitle(artist).replace(/\s*-\s*topic$/i, '').replace(/vevo$/i, '').trim();
+  if (!t) return null;
+  const tracks = await yandexSearch(/\s[-–—]\s/.test(t) || !a || t.toLowerCase().includes(a.toLowerCase()) ? t : `${a} ${t}`, 5);
+  const d = Number(duration) || 0;
+  // music videos run a little longer than the album track (intros, outros)
+  return tracks.find(x => !d || !x.duration || Math.abs(x.duration - d) <= 25) || null;
+}
+
+// mobile: get a song into the cache from its own source, else Yandex Music, else a full SoundCloud upload
+async function cacheTrackWithFallbacks(trackUrl, cleanId, platform, meta) {
+  await downloadTrackToDisk(trackUrl, cleanId, platform, meta);
+  if (await findCachedFile(cleanId) || !(meta.title || meta.artist)) return;
+  if (platform !== 'yandex') {
+    const ym = await yandexMatch(meta.title, meta.artist, meta.duration).catch(() => null);
+    if (ym) {
+      try { logger.log('info', `YouTube failed, using Yandex Music: ${ym.artist} - ${ym.title}`); } catch (_) {}
+      await downloadTrackToDisk(ym.url, cleanId, 'yandex', meta);
+      if (await findCachedFile(cleanId)) return;
+    }
+  }
+  await downloadTrackToDisk(`scsearch1:${`${meta.artist || ''} ${meta.title || ''}`.trim()}`, cleanId, 'soundcloud', meta);
+}
+
 async function prefetchTrack(trackUrl, trackId, platform, meta = null) {
   let cleanId = cleanTrackId(trackId);
   if (!cleanId && trackUrl && trackUrl.includes('v=')) {
@@ -1332,7 +1363,7 @@ async function prefetchTrack(trackUrl, trackId, platform, meta = null) {
     if (!meta || !meta.title || !cleanId) return;
     if (platform === 'youtube' && (!trackUrl || !trackUrl.startsWith('http'))) trackUrl = `https://www.youtube.com/watch?v=${cleanId}`;
     prefetchingSet.add(cacheKey);
-    try { await downloadTrackToDisk(trackUrl, cleanId, platform, meta); } finally { prefetchingSet.delete(cacheKey); }
+    try { await cacheTrackWithFallbacks(trackUrl, cleanId, platform, meta); } finally { prefetchingSet.delete(cacheKey); }
     return;
   }
   prefetchingSet.add(cacheKey);
@@ -1845,11 +1876,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
   }
 
   if (STREAM_VIA_CACHE) {
-    if (cleanId) await downloadTrackToDisk(trackUrl, cleanId, platform, meta);
-    if (cleanId && !await findCachedFile(cleanId) && (title || artist)) {
-      // same SoundCloud fallback as the streaming path below
-      await downloadTrackToDisk(`scsearch1:${`${artist} ${title}`.trim()}`, cleanId, 'soundcloud', meta);
-    }
+    if (cleanId) await cacheTrackWithFallbacks(trackUrl, cleanId, platform, meta);
     if (cleanId && await findCachedFile(cleanId)) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ success: true, isLocal: true, streamUrl: `http://127.0.0.1:${PORT}/api/local-track?id=${encodeURIComponent(cleanId)}` }));

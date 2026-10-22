@@ -153,9 +153,10 @@ async function soundcloudSearch(query, limit) {
 
 async function soundcloudAudio(pageUrl) {
   const t = await scApi(`/resolve?url=${encodeURIComponent(pageUrl)}`);
-  const list = (t.media && t.media.transcodings) || [];
+  // snipped transcodings are 30-second previews (Go+ tracks); a preview passed off as the song is worse than none
+  const list = ((t.media && t.media.transcodings) || []).filter((x) => !x.snipped);
   const tc = list.find((x) => x.format.protocol === 'progressive') || list[0];
-  if (!tc) throw new Error('no SoundCloud stream');
+  if (!tc) throw new Error(t.policy === 'SNIP' ? 'SoundCloud only has a preview' : 'no SoundCloud stream');
   const auth = t.track_authorization ? `?track_authorization=${t.track_authorization}` : '';
   const { url } = await scApi(tc.url.replace('https://api-v2.soundcloud.com', '') + auth);
   return { url, ext: tc.format.protocol === 'progressive' ? 'mp3' : 'm3u8', artist: t.user && t.user.username, title: t.title, duration: Math.round(t.duration / 1000) };

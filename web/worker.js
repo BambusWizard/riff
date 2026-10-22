@@ -22,7 +22,10 @@ const ALLOWED_HOSTS = [
   'yandex.ru', 'yandex.net', // through the Russian relay
 ];
 const hostAllowed = (h) => ALLOWED_HOSTS.some((d) => h === d || h.endsWith(`.${d}`));
-const isYandex = (h) => /(^|\.)yandex\.(ru|net)$/.test(h);
+// only the API and download-info need a Russian IP; the audio files themselves (*.storage.yandex.net)
+// are served anywhere and are too big for the relay's response limit, so those go direct
+const RELAYED = ['api.music.yandex.net', 'storage.mds.yandex.net', 'music.yandex.ru'];
+const isYandex = (h) => RELAYED.includes(h);
 
 function yandexToken(env, user) {
   try { return JSON.parse(env.YANDEX_TOKENS || '{}')[user] || ''; } catch (e) { return ''; }

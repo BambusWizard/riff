@@ -34,3 +34,25 @@ createServer(async (req, res) => {
     res.end(await readFile(p));
   } catch { res.writeHead(404); res.end('not found'); }
 }).listen(port, () => console.log(`riff mobile dev: http://localhost:${port}`));
+
+// --watch: rebuilds www/ whenever the app's own files change; reload the page to see it
+if (process.argv.includes('--watch')) {
+  const { spawn } = await import('node:child_process');
+  const { watch } = await import('node:fs');
+  const root = resolve(www, '..');
+  let timer = null, running = false, again = false;
+  const rebuild = () => {
+    if (running) { again = true; return; }
+    running = true;
+    const t0 = Date.now();
+    spawn(process.execPath, [join(root, 'mobile', 'build.mjs')], { stdio: ['ignore', 'ignore', 'inherit'] }).on('exit', (code) => {
+      console.log(code === 0 ? `rebuilt in ${Date.now() - t0} ms` : `build failed (${code})`);
+      running = false;
+      if (again) { again = false; rebuild(); }
+    });
+  };
+  const changed = (name) => { if (!name || /(^|[\\/])\.|~$/.test(name)) return; clearTimeout(timer); timer = setTimeout(rebuild, 200); };
+  for (const f of ['app.js', 'styles.css', 'index.html', 'audio-engine.js', 'server.js', 'm3shapes.js']) watch(join(root, f), () => changed(f));
+  watch(join(root, 'mobile'), { recursive: true }, (e, name) => changed(name));
+  rebuild();
+}

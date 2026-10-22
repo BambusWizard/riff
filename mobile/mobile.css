@@ -164,7 +164,7 @@ html.is-mobile #playbar-artwork-wrapper canvas { width: 70px !important; height:
 html.is-mobile .playbar-left .track-meta { max-width: none !important; flex: 1 1 auto !important; }
 html.is-mobile .playbar-left > .btn-icon-pill,
 html.is-mobile .playbar-right,
-html.is-mobile #btn-shuffle, html.is-mobile #btn-repeat, html.is-mobile #btn-prev,
+html.is-mobile #btn-shuffle, html.is-mobile #btn-repeat, html.is-mobile #btn-prev, html.is-mobile #btn-next,
 html.is-mobile .playbar-center .scrubber-bar-wrapper { display: none !important; }
 html.is-mobile .playbar-center { flex: 0 0 auto !important; width: auto !important; max-width: none !important; }
 html.is-mobile .playback-controls { gap: 2px !important; }
@@ -218,7 +218,8 @@ html.is-mobile body.np-open .playbar::after,
 html.is-mobile body.np-open .playbar-left { display: none !important; }
 html.is-mobile body.np-open .playbar-center { width: 100% !important; display: flex !important; flex-direction: column-reverse !important; gap: 10px !important; }
 html.is-mobile body.np-open .playbar-center .scrubber-bar-wrapper { display: flex !important; width: 100% !important; }
-html.is-mobile body.np-open #btn-shuffle, html.is-mobile body.np-open #btn-repeat, html.is-mobile body.np-open #btn-prev { display: inline-flex !important; }
+html.is-mobile body.np-open #btn-shuffle, html.is-mobile body.np-open #btn-repeat, html.is-mobile body.np-open #btn-prev, html.is-mobile body.np-open #btn-next { display: inline-flex !important; }
+html.is-mobile body.np-open #mini-like { display: none !important; }
 html.is-mobile body.np-open .playback-controls { justify-content: space-between !important; width: 100% !important; }
 html.is-mobile body.np-open .btn-play-pause { width: 64px !important; height: 64px !important; }
 html.is-mobile body.np-open .playbar-right { display: flex !important; justify-content: space-around !important; width: 100% !important; }
@@ -440,10 +441,10 @@ html.is-mobile .np-tools-moved .lyrics-action-btn { width: 36px !important; heig
 html.is-mobile #right-panel .lyrics-header:empty, html.is-mobile #right-panel .lyrics-header:not(:has(*)) { display: none !important; }
 
 /* like button in Now Playing */
-html.is-mobile #np-like { flex: 0 0 auto; width: 40px; height: 40px; display: grid; place-items: center; background: none; border: 0; color: var(--md-sys-color-on-surface-variant); }
-html.is-mobile #np-like svg { width: 24px; height: 24px; }
-html.is-mobile #np-like.on { color: #ff5a8a; }
-html.is-mobile #np-like.pop { animation: np-like-pop .35s cubic-bezier(.2, .8, .2, 1.4); }
+html.is-mobile .np-like { flex: 0 0 auto; width: 40px; height: 40px; display: grid; place-items: center; background: none; border: 0; color: var(--md-sys-color-on-surface-variant); }
+html.is-mobile .np-like svg { width: 24px; height: 24px; }
+html.is-mobile .np-like.on { color: #ff5a8a; }
+html.is-mobile .np-like.pop { animation: np-like-pop .35s cubic-bezier(.2, .8, .2, 1.4); }
 @keyframes np-like-pop { 0% { transform: scale(1); } 40% { transform: scale(1.3); } 100% { transform: scale(1); } }
 html.is-mobile #right-panel:not(.lyrics-empty) .right-panel-title-row { width: 100% !important; }
 
@@ -474,3 +475,4 @@ html.is-mobile #artist-hero-backdrop,
 html.is-mobile #album-hero-fx,
 html.is-mobile .ambient-img-layer { will-change: transform; }
 html.is-mobile .logo-build { font-size: 11px; color: var(--md-sys-color-outline); font-variant-numeric: tabular-nums; }
+html.is-mobile .playbar-left { will-change: transform; }

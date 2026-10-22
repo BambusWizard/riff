@@ -34,8 +34,9 @@
   const closeSheet = () => { if (!panel.classList.contains('hidden')) document.getElementById('btn-close-right-panel').click(); };
 
   // tapping the mini player (but not its buttons) opens the sheet
+  let swiped = 0;
   playbar.addEventListener('click', (e) => {
-    if (document.body.classList.contains('np-open')) return;
+    if (document.body.classList.contains('np-open') || Date.now() - swiped < 400) return;
     if (e.target.closest('button, input, .scrubber-track-container')) return;
     openSheet();
   });
@@ -88,12 +89,14 @@
 
   // like button next to the title in Now Playing (the player bar's heart is hidden on phones);
   // it presses the real one and mirrors its state
+  // (and one more at the right end of the mini player)
   const realFav = document.getElementById('btn-toggle-fav');
   const favIcon = document.getElementById('fav-icon');
   const titleRow = panel.querySelector('.right-panel-title-row');
-  if (realFav && favIcon && titleRow) {
+  const addLike = (id, parent) => {
     const like = document.createElement('button');
-    like.id = 'np-like';
+    like.id = id;
+    like.className = 'np-like';
     like.type = 'button';
     like.setAttribute('aria-label', 'Like');
     like.innerHTML = favIcon.outerHTML.replace('id="fav-icon"', '');
@@ -104,8 +107,49 @@
       if (navigator.vibrate) navigator.vibrate(12);
     });
     new MutationObserver(mirror).observe(favIcon, { attributes: true, attributeFilter: ['fill'] });
-    titleRow.appendChild(like);
+    parent.appendChild(like);
     mirror();
+  };
+  if (realFav && favIcon && titleRow) addLike('np-like', titleRow);
+  if (realFav && favIcon) addLike('mini-like', playbar);
+
+  // swipe the mini player sideways to skip: left = the previous song (straight to it, not back to
+  // the start of this one), right = the next one. The cover and title follow the finger.
+  const miniLeft = playbar.querySelector('.playbar-left');
+  if (miniLeft) {
+    let x0 = null, y0 = null, dx = 0, horizontal = null;
+    playbar.addEventListener('touchstart', (e) => {
+      if (document.body.classList.contains('np-open') || e.target.closest('button')) { x0 = null; return; }
+      x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; dx = 0; horizontal = null;
+      miniLeft.style.transition = 'none';
+    }, { passive: true });
+    playbar.addEventListener('touchmove', (e) => {
+      if (x0 === null) return;
+      dx = e.touches[0].clientX - x0;
+      const dy = e.touches[0].clientY - y0;
+      if (horizontal === null && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) horizontal = Math.abs(dx) > Math.abs(dy);
+      if (horizontal) { miniLeft.style.transform = `translateX(${dx}px)`; miniLeft.style.opacity = String(Math.max(0.3, 1 - Math.abs(dx) / 220)); }
+    }, { passive: true });
+    playbar.addEventListener('touchend', () => {
+      if (x0 === null) return;
+      x0 = null;
+      if (horizontal) swiped = Date.now(); // the tap that ends a swipe doesn't open Now Playing
+      miniLeft.style.transition = 'transform .26s cubic-bezier(.2,.8,.2,1), opacity .26s';
+      if (horizontal && Math.abs(dx) > 60) {
+        const dir = dx < 0 ? -1 : 1;
+        miniLeft.style.transform = `translateX(${dir * 140}px)`;
+        miniLeft.style.opacity = '0';
+        if (navigator.vibrate) navigator.vibrate(10);
+        setTimeout(() => {
+          if (window.RiffCore) { if (dir < 0) window.RiffCore.prev(); else window.RiffCore.next(); }
+          miniLeft.style.transition = 'none';
+          miniLeft.style.transform = `translateX(${-dir * 60}px)`;
+          requestAnimationFrame(() => { miniLeft.style.transition = 'transform .3s cubic-bezier(.2,.8,.2,1), opacity .3s'; miniLeft.style.transform = ''; miniLeft.style.opacity = ''; });
+        }, 180);
+      } else {
+        miniLeft.style.transform = ''; miniLeft.style.opacity = '';
+      }
+    });
   }
 
   // slowly drifting colour glow behind Now Playing (cover colours, plain gradients: cheap to draw)

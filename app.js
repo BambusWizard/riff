@@ -5195,8 +5195,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  function playPrev() {
-    if (el.nativeAudio && el.nativeAudio.currentTime > 3) {
+  function playPrev(direct = false) {
+    // direct: always the previous song (mini player swipe), never back to the start of this one
+    if (direct !== true && el.nativeAudio && el.nativeAudio.currentTime > 3) {
       el.nativeAudio.currentTime = 0;
       return;
     }
@@ -15581,6 +15582,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     state,
     toast: (msg, kind) => showToast(msg, kind),
     refreshBackground: () => updateCustomBg(),
+    next: () => playNext(),
+    prev: () => playPrev(true),
   };
   window.dispatchEvent(new Event('riff:ready'));
 

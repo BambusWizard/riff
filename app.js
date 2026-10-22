@@ -622,6 +622,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   let lastMedia = { g: '', t: 0 };
   let hasNotifiedMediaKeysActive = false;
   function handleMediaCommand(cmd, src) {
+    if (window.RiffLog && window.RiffLog.bg && src === 'session') window.RiffLog.bg(`lock screen: ${cmd} (${state.isPlaying ? 'playing' : 'paused'})`);
     const g = MEDIA_GROUP[cmd];
     if (!g) return;
     const now = performance.now();

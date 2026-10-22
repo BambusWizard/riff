@@ -22,8 +22,17 @@ for (const level of ['warn', 'error']) {
 }
 window.addEventListener('error', (e) => riffLog('error', `${e.message} @ ${(e.filename || '').split('/').pop()}:${e.lineno}`));
 window.addEventListener('unhandledrejection', (e) => riffLog('error', `unhandled: ${(e.reason && (e.reason.stack || e.reason.message)) || e.reason}`));
+// background playback steps: saved at once, since iOS may freeze or unload the app right after
+const bgLog = (msg) => {
+  riffLog('bg', msg);
+  clearTimeout(logSaveTimer);
+  try { localStorage.setItem(LOG_KEY, JSON.stringify(logLines)); } catch (e) {}
+};
+bgLog(`app started (${navigator.standalone ? 'home screen' : 'browser'}, ${document.hidden ? 'hidden' : 'visible'})`);
+document.addEventListener('visibilitychange', () => bgLog(document.hidden ? 'app hidden' : 'app visible'));
 window.RiffLog = {
   add: riffLog,
+  bg: bgLog,
   text: () => [`Riff ${navigator.userAgent}`, `platform: ${Capacitor.getPlatform()}`, ...logLines].join('\n'),
   clear: () => { logLines.length = 0; try { localStorage.removeItem(LOG_KEY); } catch (e) {} },
 };
@@ -160,6 +169,7 @@ patchSrc(HTMLImageElement.prototype);
 
 const realPlay = HTMLMediaElement.prototype.play;
 HTMLMediaElement.prototype.play = function () {
+  if (this.__riffSilent && !this.paused && !this.__riffPending) return Promise.resolve(); // already playing (a held song resuming)
   return this.__riffPending ? this.__riffPending.then(() => realPlay.call(this)) : realPlay.call(this);
 };
 
@@ -207,33 +217,38 @@ for (const prop of ['currentTime', 'duration']) {
 // After 10 minutes, or when the app comes back to the front, the song is put back paused.
 const HOLD_MS = 10 * 60 * 1000;
 const realDuration = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'duration');
-const endHold = (audio) => {
+// resume: the song goes straight back on and play() is called right away, still inside the lock screen's tap
+// (a play() after waiting for the file was refused in the background); its own events stay hidden until it is
+// at the paused spot. pauseToo (back in the app, or the 10 minutes ran out): put it back paused instead.
+const endHold = (audio, pauseToo) => {
   const h = audio.__riffHold;
   if (!h) return;
   clearTimeout(h.timer);
   audio.__riffHold = null;
-  audio.pause();
-  // the song's own loading events stay hidden (the element is still "silent") until it is at the paused spot;
-  // play() waits for this (see the patched play above)
-  audio.__riffPending = new Promise((resolve) => {
-    let finished = false;
-    const finish = () => {
-      if (finished) return;
-      finished = true;
-      try { realTime.set.call(audio, h.at); } catch (e) {}
-      endSilence(audio);
-      audio.loop = h.loop;
-      resolve();
-    };
-    const wait = () => (audio.readyState >= 1 ? finish() : setTimeout(wait, 50));
-    realSrc.set.call(audio, h.src);
-    wait();
-    setTimeout(finish, 8000);
-  });
+  bgLog(`hold end (${pauseToo ? 'paused' : 'resume'}) at ${Math.round(h.at)}s`);
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    try { realTime.set.call(audio, h.at); } catch (e) {}
+    endSilence(audio);
+    audio.loop = h.loop;
+    bgLog(`song back (ready ${audio.readyState}, ${audio.paused ? 'paused' : 'playing'})`);
+  };
+  const wait = () => (audio.readyState >= 1 ? finish() : setTimeout(wait, 50));
+  audio.__riffPending = null;
+  realSrc.set.call(audio, h.src);
+  if (pauseToo) audio.pause();
+  else realPlay.call(audio).then(() => bgLog('play ok')).catch((e) => bgLog(`play refused: ${e.name} ${e.message}`));
+  wait();
+  setTimeout(finish, 8000);
 };
 window.RiffBackgroundHold = {
   hold(audio) {
-    if (Capacitor.isNativePlatform() || !navigator.standalone || !document.hidden || audio.__riffSilent || audio.paused) return false;
+    if (Capacitor.isNativePlatform() || !navigator.standalone || !document.hidden || audio.__riffSilent || audio.paused) {
+      if (!Capacitor.isNativePlatform() && navigator.standalone) bgLog(`pause, no hold (${document.hidden ? '' : 'visible '}${audio.__riffSilent ? 'silent ' : ''}${audio.paused ? 'paused' : ''})`);
+      return false;
+    }
     const src = realSrc.get.call(audio);
     if (!src) return false;
     audio.__riffHold = {
@@ -243,14 +258,15 @@ window.RiffBackgroundHold = {
     audio.__riffSilent = true;
     audio.loop = true;
     realSrc.set.call(audio, SILENT);
-    realPlay.call(audio).catch(() => {});
+    realPlay.call(audio).then(() => bgLog('hold: silence playing')).catch((e) => bgLog(`hold: silence refused: ${e.name} ${e.message}`));
+    bgLog(`hold at ${Math.round(audio.__riffHold.at)}s`);
     return true;
   },
-  release(audio) { endHold(audio); },
+  release(audio) { endHold(audio, false); },
 };
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) return;
-  document.querySelectorAll('audio').forEach((a) => endHold(a));
+  document.querySelectorAll('audio').forEach((a) => endHold(a, true));
 });
 function endSilence(audio) {
   if (!audio.__riffSilent) return;

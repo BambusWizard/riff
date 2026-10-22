@@ -5,7 +5,8 @@ name: Web build (GitHub Pages)
 #   nightly (branch "web-pwa") -> nightly/,   e.g. https://<user>.github.io/riff/nightly/
 # Each run replaces only its own channel's files. Settings -> Storage -> "Nightly builds" switches the app between
 # them (same origin, so likes, playlists and the access key are shared). Ship nightly as stable: merge web-pwa into
-# stable and push.
+# stable and push. (Creating a branch at a commit that is already on another branch starts no run here: the
+# paths filter sees no changed files. Push a commit that changes a file, or use "Run workflow".)
 # One-time setup: Settings -> Pages -> Source: "Deploy from a branch", branch gh-pages / (root);
 # The proxy (web/worker.js) runs on Cloudflare Pages: riff-proxy.pages.dev. Some phones can't resolve *.workers.dev.
 on:

@@ -1,8 +1,11 @@
 // Web build only: keeps the app's own files on the phone so the Home Screen app opens without internet.
 // build.mjs fills in VERSION and SHELL (every file of this build, with the same ?v= the page asks for).
-const VERSION = '73a31de';
-const SHELL = ["index.html","pwa/manifest.webmanifest","pwa/icon-180.png","styles.css?v=73a31de","mobile.css?v=73a31de","assets/icon.png","assets/hls.min.js?v=73a31de","mobile-bridge.js?v=73a31de","audio-engine.js?v=73a31de","m3shapes.js?v=73a31de","lyrics-rtl.js?v=73a31de","track-sort.js?v=73a31de","search-text.js?v=73a31de","library-tools.js?v=73a31de","app.js?v=73a31de","mobile-ui.js?v=73a31de","assets/Tone.js","assets/hls.min.js","pwa/icon-192.png","pwa/icon-512.png"];
-const CACHE = `riff-${VERSION}`;
+const VERSION = '47c76b0';
+const SHELL = ["index.html","pwa/manifest.webmanifest","pwa/icon-180.png","styles.css?v=47c76b0","mobile.css?v=47c76b0","assets/icon.png","assets/hls.min.js?v=47c76b0","mobile-bridge.js?v=47c76b0","audio-engine.js?v=47c76b0","m3shapes.js?v=47c76b0","lyrics-rtl.js?v=47c76b0","track-sort.js?v=47c76b0","search-text.js?v=47c76b0","library-tools.js?v=47c76b0","app.js?v=47c76b0","mobile-ui.js?v=47c76b0","assets/Tone.js","assets/hls.min.js","pwa/icon-192.png","pwa/icon-512.png"];
+const CHANNEL = 'stable';
+// per channel: stable's worker (scope /riff/) must not throw away nightly's files (/riff/nightly/) or back
+const PREFIX = `riff-${CHANNEL}-`;
+const CACHE = `${PREFIX}${VERSION}`;
 const FONTS = /^https:\/\/fonts\.(googleapis|gstatic)\.com$/;
 // covers (YouTube, SoundCloud, Yandex...) are kept across versions, so downloaded songs show them offline.
 // Colour extraction loads covers with CORS, plain <img> without; the two answers can't stand in for each other
@@ -21,7 +24,8 @@ self.addEventListener('install', (e) => {
 
 self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys()
-    .then((keys) => Promise.all(keys.filter((k) => k.startsWith('riff-') && k !== CACHE).map((k) => caches.delete(k))))
+    .then((keys) => Promise.all(keys.filter((k) => k.startsWith('riff-') && k !== CACHE
+      && (k.startsWith(PREFIX) || !/^riff-(stable|nightly|local)-/.test(k))).map((k) => caches.delete(k)))) // own old builds + pre-channel caches
     .then(() => self.clients.claim()));
 });
 
@@ -40,7 +44,8 @@ self.addEventListener('fetch', (e) => {
   }
   const fonts = FONTS.test(url.origin);
   if (req.method !== 'GET' || (url.origin !== location.origin && !fonts)) return; // proxy and streams: untouched
-  if (url.pathname.endsWith('/version.json') || req.headers.has('range')) return; // the update check must always ask the server; media seeks go straight through
+  if (url.pathname.endsWith('/version.json') || req.headers.has('range')) return;
+  if (CHANNEL === 'stable' && url.pathname.includes('/nightly/')) return; // nightly's own worker (or the network) serves it // the update check must always ask the server; media seeks go straight through
 
   // the page itself: newest from the network, the saved one when offline. ?v= only busts the browser cache
   if (req.mode === 'navigate') {

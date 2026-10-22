@@ -366,6 +366,34 @@ applyRowBadges();
       badgesSwitch.classList.toggle('active', on);
       applyRowBadges();
     });
+    // stable / nightly (only on the GitHub Pages build, where both are deployed)
+    const channel = (document.querySelector('meta[name="riff-channel"]') || {}).content || '';
+    if (channel) {
+      const nightlyRow = document.createElement('div');
+      nightlyRow.className = 'setting-item';
+      nightlyRow.innerHTML = `
+        <div class="setting-item-top" style="align-items: center;">
+          <div style="display: flex; flex-direction: column; gap: 2px;">
+            <span class="setting-name">Nightly builds</span>
+            <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">The newest test version, changes every day and may break. Off: the stable version. Your likes and playlists stay the same.</span>
+          </div>
+          <button class="effect-switch-btn${channel === 'nightly' ? ' active' : ''}" type="button"><span class="thumb"></span></button>
+        </div>`;
+      const sw = nightlyRow.querySelector('button');
+      sw.addEventListener('click', async () => {
+        const toNightly = channel !== 'nightly';
+        if (toNightly) {
+          // don't send anyone to a page that isn't there (the redirect at launch would keep them stuck on it)
+          try { const r = await fetch(`nightly/version.json?t=${Date.now()}`, { cache: 'no-store' }); if (!r.ok) throw new Error(r.status); }
+          catch (e) { if (window.RiffCore) window.RiffCore.toast('No nightly build yet', 'info'); return; }
+        }
+        try { localStorage.setItem('riff_channel', toNightly ? 'nightly' : 'stable'); } catch (e) { return; }
+        sw.classList.toggle('active', toNightly);
+        if (window.RiffSplash) window.RiffSplash.show(toNightly ? 'Switching to nightly…' : 'Switching to stable…');
+        location.replace(toNightly ? 'nightly/' : '../');
+      });
+      storageGroup.append(nightlyRow);
+    }
     storageGroup.append(limitRow, badgesRow, logRow);
   }
 

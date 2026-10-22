@@ -119,8 +119,8 @@ applyRowBadges();
   if (realFav && favIcon && titleRow) addLike('np-like', titleRow);
   if (realFav && favIcon) addLike('mini-like', playbar);
 
-  // swipe the mini player sideways to skip: left = the previous song (straight to it, not back to
-  // the start of this one), right = the next one. The cover and title follow the finger.
+  // swipe the mini player sideways to skip, like the cover in Now Playing: left = the next song (further down the
+  // list), right = the previous one (straight to it, not back to the start of this one). Cover and title follow the finger.
   const miniLeft = playbar.querySelector('.playbar-left');
   if (miniLeft) {
     let x0 = null, y0 = null, dx = 0, horizontal = null;
@@ -147,7 +147,7 @@ applyRowBadges();
         miniLeft.style.opacity = '0';
         if (navigator.vibrate) navigator.vibrate(10);
         setTimeout(() => {
-          if (window.RiffCore) { if (dir < 0) window.RiffCore.prev(); else window.RiffCore.next(); }
+          if (window.RiffCore) { if (dir < 0) window.RiffCore.next(); else window.RiffCore.prev(); }
           miniLeft.style.transition = 'none';
           miniLeft.style.transform = `translateX(${-dir * 60}px)`;
           requestAnimationFrame(() => { miniLeft.style.transition = 'transform .3s cubic-bezier(.2,.8,.2,1), opacity .3s'; miniLeft.style.transform = ''; miniLeft.style.opacity = ''; });

@@ -9,6 +9,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { ytDlpCommand } = require('../platform');
 const { parseName, cleanTitle, cleanArtist, similarity, artistSimilarity } = require('./names');
+const { UNCENSORED } = require('./lookup');
 
 // where yt-dlp can get the song from; null: only a phone that has the file can add it
 function sourceUrl(song) {
@@ -66,6 +67,7 @@ const pickResult = (song, results) => {
     const title = Math.max(similarity(p.title, song.title), similarity(cleanTitle(r.title), song.title));
     const artist = Math.max(artistSimilarity(p.artist, song.artist), artistSimilarity(cleanArtist(r.channel), song.artist));
     if (title < 0.75 || artist < 0.6) continue;
+    if (UNCENSORED.test(song.title) && !UNCENSORED.test(r.title)) continue; // not the censored release instead
     // the artist's own channel (or its "- Topic" one) over a re-upload
     const own = artistSimilarity(cleanArtist(r.channel), song.artist) >= 0.8;
     const s = title + artist + (own ? 0.1 : 0) + (/ - topic$/i.test(r.channel) ? 0.1 : 0);

@@ -71,8 +71,12 @@ const catalogues = {
 const ORDER = ['yandex', 'itunes', 'deezer', 'musicbrainz'];
 
 // how sure we are that a candidate is this song (0..1), from the names and the length
+// a version the catalogues' copy may not be: "без цензуры" isn't renamed to the censored release of the song
+const UNCENSORED = /без\s*цензуры|без\s*мата|uncensored|нецензур/i;
+
 function score(c, want) {
-  const t = similarity(c.title, want.title);
+  let t = similarity(c.title, want.title);
+  if (UNCENSORED.test(want.title) && !UNCENSORED.test(c.title)) t = Math.min(t, 0.6);
   const a = artistSimilarity(c.artist, want.artist);
   let d = 0.5; // unknown length: neither for nor against
   if (want.duration && c.duration) {
@@ -101,4 +105,4 @@ async function find(song, { only = ORDER, down = new Set() } = {}) {
   return { parsed, candidates: all.slice(0, 5) };
 }
 
-module.exports = { find, score, isSure, catalogues };
+module.exports = { find, score, isSure, catalogues, UNCENSORED };

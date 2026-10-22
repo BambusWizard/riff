@@ -69,3 +69,16 @@ test('the same song on YouTube: our artist and title, the same length', () => {
   assert.strictEqual(pickResult(song, results).id, 'own');
   assert.strictEqual(pickResult(song, results.slice(0, 2)), null);
 });
+
+test('"без цензуры" is never sure to be the catalogue release without it', () => {
+  const { score, isSure } = require('../library/lookup');
+  const want = { artist: 'мукка', title: 'Девочка с каре (без цензуры)', duration: 157 };
+  assert.ok(!isSure(score({ artist: 'МУККА', title: 'Девочка с каре', duration: 157 }, want)));
+  assert.ok(isSure(score({ artist: 'МУККА', title: 'Девочка с каре (Без цензуры)', duration: 157 }, want)));
+});
+
+test('the YouTube copy of an uncensored song is not the censored one', () => {
+  const { pickResult } = require('../library/downloader');
+  const song = { artist: 'мукка', title: 'Девочка с каре (без цензуры)', duration: 157 };
+  assert.strictEqual(pickResult(song, [{ id: 'clean', duration: 157, channel: 'МУККА', title: 'МУККА - Девочка с каре' }]), null);
+});

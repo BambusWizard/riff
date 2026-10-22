@@ -183,14 +183,52 @@ const MEDIA_EVENTS = ['loadstart', 'progress', 'suspend', 'abort', 'error', 'emp
   'canplay', 'canplaythrough', 'playing', 'waiting', 'seeking', 'seeked', 'ended', 'durationchange', 'timeupdate', 'play', 'pause', 'ratechange'];
 // media events don't bubble but do pass the capture phase, so stopping them at window keeps them from the element's listeners
 for (const t of MEDIA_EVENTS) window.addEventListener(t, (e) => { if (e.target && e.target.__riffSilent) e.stopImmediatePropagation(); }, true);
+const realTime = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'currentTime');
 for (const prop of ['currentTime', 'duration']) {
   const d = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, prop);
   Object.defineProperty(HTMLMediaElement.prototype, prop, {
     configurable: true,
-    get() { return this.__riffSilent ? (prop === 'duration' ? NaN : 0) : d.get.call(this); },
-    set: d.set,
+    get() {
+      if (this.__riffSilent) return prop === 'duration' ? NaN : 0;
+      if (prop === 'currentTime' && this.__riffHold) return this.__riffHold.at; // held: the app sees it standing still
+      return d.get.call(this);
+    },
+    set(v) {
+      if (prop === 'currentTime' && this.__riffHold) this.__riffHold.at = v; // a seek while held moves the resume point
+      d.set.call(this, v);
+    },
   });
 }
+
+// Pausing on the lock screen of the Home Screen app: iOS soon freezes a background web app that isn't playing,
+// often unloads it, and then the lock screen's play button does nothing. So while the app is in the background,
+// a pause keeps the song running muted and looped (no "ended", nothing heard) and play puts it back where it was
+// paused. After 10 minutes, or when the app comes back to the front, it becomes a real pause.
+const HOLD_MS = 10 * 60 * 1000;
+const endHold = (audio, pauseToo) => {
+  const h = audio.__riffHold;
+  if (!h) return;
+  clearTimeout(h.timer);
+  audio.__riffHold = null;
+  audio.loop = h.loop;
+  try { realTime.set.call(audio, h.at); } catch (e) {}
+  if (pauseToo) audio.pause();
+  audio.muted = h.muted;
+};
+window.RiffBackgroundHold = {
+  hold(audio) {
+    if (Capacitor.isNativePlatform() || !navigator.standalone || !document.hidden || audio.__riffSilent || audio.paused) return false;
+    audio.__riffHold = { at: realTime.get.call(audio), loop: audio.loop, muted: audio.muted, timer: setTimeout(() => endHold(audio, true), HOLD_MS) };
+    audio.muted = true;
+    audio.loop = true;
+    return true;
+  },
+  release(audio) { endHold(audio, false); },
+};
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  document.querySelectorAll('audio').forEach((a) => endHold(a, true));
+});
 function endSilence(audio) {
   if (!audio.__riffSilent) return;
   audio.loop = false;

@@ -379,3 +379,88 @@ applyRowBadges();
   }, true);
   document.addEventListener('contextmenu', (e) => { if (e.target.closest('.track-row')) e.preventDefault(); });
 })();
+
+// Big blurred backgrounds (the cover behind everything, artist/album heroes) are CSS blur(70-90px) on desktop.
+// iOS redraws such a filter whenever something moves over it, e.g. the Now Playing sheet sliding down, and it
+// stutters. Here each picture is blurred once into a tiny image (a few KB, cached per song/artist) and shown
+// as a plain background; data-preblur turns the CSS filter off. If a picture can't be read (no CORS), the
+// element simply keeps the CSS blur.
+(() => {
+  const TARGETS = [
+    ['#cover-bg .cover-bg-layer', { sat: 1.3, light: 1 }],
+    ['#artist-hero-backdrop', { sat: 1.5, light: 0.5 }],
+    ['#album-hero-fx', { sat: 1.5, light: 0.5 }],
+  ];
+  const SIZE = 32;
+  const done = new Map(); // `${url}|${sat}|${light}` -> data URL
+  const urlOf = (bg) => { const m = /url\(["']?([^"')]+)["']?\)/.exec(bg || ''); return m ? m[1] : ''; };
+
+  const boxBlur = (px, w, h, r) => {
+    const out = new Float32Array(px.length);
+    for (let pass = 0; pass < 2; pass++) {
+      const src = pass ? out.slice() : px;
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        let R = 0, G = 0, B = 0, n = 0;
+        for (let k = -r; k <= r; k++) {
+          const xx = pass ? x : Math.min(w - 1, Math.max(0, x + k));
+          const yy = pass ? Math.min(h - 1, Math.max(0, y + k)) : y;
+          const i = (yy * w + xx) * 4;
+          R += src[i]; G += src[i + 1]; B += src[i + 2]; n++;
+        }
+        const o = (y * w + x) * 4;
+        out[o] = R / n; out[o + 1] = G / n; out[o + 2] = B / n; out[o + 3] = 255;
+      }
+    }
+    return out;
+  };
+
+  const blurred = (url, { sat, light }) => {
+    const key = `${url}|${sat}|${light}`;
+    if (done.has(key)) return Promise.resolve(done.get(key));
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          const c = document.createElement('canvas');
+          c.width = c.height = SIZE;
+          const ctx = c.getContext('2d');
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(img, 0, 0, SIZE, SIZE); // shrinking already averages most of the detail away
+          const data = ctx.getImageData(0, 0, SIZE, SIZE); // throws if the picture is cross-origin without CORS
+          const px = boxBlur(data.data, SIZE, SIZE, 3);
+          for (let i = 0; i < px.length; i += 4) {
+            const g = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+            for (let k = 0; k < 3; k++) data.data[i + k] = Math.max(0, Math.min(255, (g + (px[i + k] - g) * sat) * light));
+            data.data[i + 3] = 255;
+          }
+          ctx.putImageData(data, 0, 0);
+          const out = c.toDataURL('image/png');
+          if (done.size > 40) done.delete(done.keys().next().value);
+          done.set(key, out);
+          resolve(out);
+        } catch (e) { reject(e); }
+      };
+      img.onerror = reject;
+      img.src = url;
+    });
+  };
+
+  const handle = (el, opts) => {
+    const url = urlOf(el.style.backgroundImage);
+    if (!url || url.startsWith('data:')) return;
+    el.removeAttribute('data-preblur'); // CSS blur until the small picture is ready
+    blurred(url, opts).then((data) => {
+      if (urlOf(el.style.backgroundImage) !== url) return; // the picture changed meanwhile
+      el.style.backgroundImage = `url("${data}")`;
+      el.dataset.preblur = '1';
+    }, () => {});
+  };
+
+  for (const [sel, opts] of TARGETS) {
+    document.querySelectorAll(sel).forEach((el) => {
+      new MutationObserver(() => handle(el, opts)).observe(el, { attributes: true, attributeFilter: ['style'] });
+      handle(el, opts);
+    });
+  }
+})();

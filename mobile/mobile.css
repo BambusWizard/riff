@@ -522,3 +522,8 @@ html.is-mobile .row-sheet-card button {
 html.is-mobile .row-sheet-card button:active { background: var(--md-sys-color-surface-container-highest); }
 @keyframes row-sheet-fade { from { opacity: 0; } }
 @keyframes row-sheet-up { from { transform: translateY(100%); } }
+
+/* pictures blurred once in mobile-ui.js: no live CSS blur behind moving things */
+html.is-mobile [data-preblur="1"] { filter: none !important; }
+/* the home glow is two soft radial gradients already; the extra 80px blur on top costs every frame on iOS */
+html.is-mobile .home-ambient-layer { filter: none !important; }

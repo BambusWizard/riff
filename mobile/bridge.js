@@ -189,12 +189,12 @@ for (const prop of ['currentTime', 'duration']) {
   Object.defineProperty(HTMLMediaElement.prototype, prop, {
     configurable: true,
     get() {
+      if (this.__riffHold) return this.__riffHold[prop === 'currentTime' ? 'at' : 'duration']; // held: the paused song, standing still
       if (this.__riffSilent) return prop === 'duration' ? NaN : 0;
-      if (prop === 'currentTime' && this.__riffHold) return this.__riffHold.at; // held: the app sees it standing still
       return d.get.call(this);
     },
     set(v) {
-      if (prop === 'currentTime' && this.__riffHold) this.__riffHold.at = v; // a seek while held moves the resume point
+      if (prop === 'currentTime' && this.__riffHold) { this.__riffHold.at = v; return; } // a seek while held moves the resume point
       d.set.call(this, v);
     },
   });
@@ -202,32 +202,55 @@ for (const prop of ['currentTime', 'duration']) {
 
 // Pausing on the lock screen of the Home Screen app: iOS soon freezes a background web app that isn't playing,
 // often unloads it, and then the lock screen's play button does nothing. So while the app is in the background,
-// a pause keeps the song running muted and looped (no "ended", nothing heard) and play puts it back where it was
-// paused. After 10 minutes, or when the app comes back to the front, it becomes a real pause.
+// a pause swaps the song for the silent loop above (iOS keeps the app and its lock screen controls alive;
+// a muted song didn't count, the controls vanished), and play loads the song back at the paused spot.
+// After 10 minutes, or when the app comes back to the front, the song is put back paused.
 const HOLD_MS = 10 * 60 * 1000;
-const endHold = (audio, pauseToo) => {
+const realDuration = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'duration');
+const endHold = (audio) => {
   const h = audio.__riffHold;
   if (!h) return;
   clearTimeout(h.timer);
   audio.__riffHold = null;
-  audio.loop = h.loop;
-  try { realTime.set.call(audio, h.at); } catch (e) {}
-  if (pauseToo) audio.pause();
-  audio.muted = h.muted;
+  audio.pause();
+  // the song's own loading events stay hidden (the element is still "silent") until it is at the paused spot;
+  // play() waits for this (see the patched play above)
+  audio.__riffPending = new Promise((resolve) => {
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      try { realTime.set.call(audio, h.at); } catch (e) {}
+      endSilence(audio);
+      audio.loop = h.loop;
+      resolve();
+    };
+    const wait = () => (audio.readyState >= 1 ? finish() : setTimeout(wait, 50));
+    realSrc.set.call(audio, h.src);
+    wait();
+    setTimeout(finish, 8000);
+  });
 };
 window.RiffBackgroundHold = {
   hold(audio) {
     if (Capacitor.isNativePlatform() || !navigator.standalone || !document.hidden || audio.__riffSilent || audio.paused) return false;
-    audio.__riffHold = { at: realTime.get.call(audio), loop: audio.loop, muted: audio.muted, timer: setTimeout(() => endHold(audio, true), HOLD_MS) };
-    audio.muted = true;
+    const src = realSrc.get.call(audio);
+    if (!src) return false;
+    audio.__riffHold = {
+      src, at: realTime.get.call(audio), duration: realDuration.get.call(audio), loop: audio.loop,
+      timer: setTimeout(() => endHold(audio), HOLD_MS),
+    };
+    audio.__riffSilent = true;
     audio.loop = true;
+    realSrc.set.call(audio, SILENT);
+    realPlay.call(audio).catch(() => {});
     return true;
   },
-  release(audio) { endHold(audio, false); },
+  release(audio) { endHold(audio); },
 };
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) return;
-  document.querySelectorAll('audio').forEach((a) => endHold(a, true));
+  document.querySelectorAll('audio').forEach((a) => endHold(a));
 });
 function endSilence(audio) {
   if (!audio.__riffSilent) return;

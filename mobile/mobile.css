@@ -527,9 +527,11 @@ html.is-mobile .track-row:not(.playing):active { background: transparent !import
 html.is-mobile .track-row:active { transform: none !important; }
 html.is-mobile .track-row-badges {
   flex: 0 0 16px; display: flex; flex-direction: column; align-items: center; gap: 7px;
+  margin-left: -10px; /* right next to the like button */
   color: var(--md-sys-color-outline);
 }
 html.is-mobile .track-row-badges svg { width: 14px; height: 14px; display: block; }
+html.is-mobile .trb-src, html.is-mobile .trb-dl { width: 14px; height: 14px; }
 html.is-mobile .trb-dl.on { color: var(--md-sys-color-primary); }
 html.is-mobile body.no-row-badges .track-row-badges { display: none; }
 

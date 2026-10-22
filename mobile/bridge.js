@@ -262,6 +262,22 @@ window.RiffIsDownloaded = (id) => {
   }
   return downloaded.has(String(id || '').replace(/[^a-zA-Z0-9_-]/g, '_')); // server.js cleanTrackId
 };
+// a song landing in (or leaving) the downloads folder tells the open lists, so their badges update right away
+const TRACKS_DIR = '/data/tracks/';
+const tracksChanged = (p) => {
+  if (typeof p !== 'string' || !p.startsWith(TRACKS_DIR) || p.includes('.temp.')) return;
+  downloaded = null;
+  window.dispatchEvent(new CustomEvent('riff:tracks-changed'));
+};
+for (const [name, target] of [['renameSync', 1], ['copyFileSync', 1], ['writeFileSync', 0], ['unlinkSync', 0]]) {
+  const orig = fs[name];
+  if (typeof orig !== 'function') continue;
+  fs[name] = function (...args) { const r = orig.apply(this, args); tracksChanged(args[target]); return r; };
+}
+{
+  const orig = fs.promises.writeFile;
+  fs.promises.writeFile = async (p, data) => { await orig(p, data); tracksChanged(p); };
+}
 document.documentElement.classList.add('is-mobile');
 
 const audioBusy = () => [...document.querySelectorAll('audio')].some((a) => !a.paused);

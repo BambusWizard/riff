@@ -473,16 +473,30 @@ applyRowBadges();
     local: ['My files', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>'],
   };
   const ON_PHONE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg>';
-  const ONLINE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 1 0-1.4-8.8A6 6 0 0 0 4.5 12.5 3.5 3.5 0 0 0 6.5 19z"/></svg>';
+  // only a downloaded song gets a mark; the empty slot keeps the source icon in the same place on every row
+  const setDownloaded = (dl, down) => {
+    dl.classList.toggle('on', down);
+    dl.title = down ? 'On this phone' : '';
+    dl.innerHTML = down ? ON_PHONE : '';
+  };
+  const isDown = (id) => (window.RiffIsDownloaded ? window.RiffIsDownloaded(id) : false);
   window.RiffDecorateRow = (row, track) => {
     const p = SOURCES[track.platform] ? track.platform : 'youtube';
-    const down = p === 'local' || (window.RiffIsDownloaded ? window.RiffIsDownloaded(track.id) : false);
     const col = document.createElement('div');
     col.className = 'track-row-badges';
-    col.innerHTML = `<span class="trb-src" title="${SOURCES[p][0]}">${SOURCES[p][1]}</span>`
-      + `<span class="trb-dl${down ? ' on' : ''}" title="${down ? 'On this phone' : 'Streams from the internet'}">${down ? ON_PHONE : ONLINE}</span>`;
+    col.innerHTML = `<span class="trb-src" title="${SOURCES[p][0]}">${SOURCES[p][1]}</span><span class="trb-dl"></span>`;
+    if (p !== 'local') col.dataset.id = track.id || '';
+    setDownloaded(col.querySelector('.trb-dl'), p === 'local' || isDown(track.id));
     row.appendChild(col);
   };
+  // a download finished (or was removed): rows already on screen update without re-rendering the list
+  let refresh = null;
+  window.addEventListener('riff:tracks-changed', () => {
+    clearTimeout(refresh);
+    refresh = setTimeout(() => {
+      document.querySelectorAll('.track-row-badges[data-id]').forEach((col) => setDownloaded(col.querySelector('.trb-dl'), isDown(col.dataset.id)));
+    }, 300);
+  });
 })();
 
 // the row's other actions (add to playlist, download, remove) are a long press away, so a row only shows the like

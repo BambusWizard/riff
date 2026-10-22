@@ -55,10 +55,12 @@ self.addEventListener('fetch', (e) => {
   }
 
   // files of this build never change; the rest (fonts, the plugin editor) is saved the first time it is used
-  e.respondWith(caches.match(req).then((hit) => hit || fetch(req).then((r) => {
+  // a request that never answers fails after 20 s instead of hanging the page's start for good (the page's
+  // watchdog then reloads it)
+  e.respondWith(caches.match(req).then((hit) => hit || fromNetwork(req, 20000).then((r) => {
     if (r.ok || (fonts && r.type === 'opaque')) { const copy = r.clone(); caches.open(CACHE).then((c) => c.put(req, copy)); }
     return r;
-  })));
+  })).catch(() => Response.error()));
 });
 
 let trimTimer = null;

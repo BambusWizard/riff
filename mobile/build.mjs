@@ -94,8 +94,20 @@ html = html
   .replace(/<body([^>]*)>/, '<body$1>\n  <div id="riff-splash"><i></i><b>Riff</b><s><em></em></s><span>Loading…</span></div>'
     + '\n  <script>(function(){var n=0,T=__RIFF_SCRIPTS__,s=document.getElementById("riff-splash");'
     + 'window.__riffSplashStep=function(p,t){if(!s)return;s.querySelector("em").style.width=Math.round(p*100)+"%";if(t!=null)s.querySelector("span").textContent=t};'
-    + 'document.addEventListener("load",function(e){var x=e.target;if(x&&x.tagName==="SCRIPT"&&x.src){n++;window.__riffSplashStep(.05+.7*Math.min(1,n/T),"Loading app… "+Math.min(n,T)+"/"+T)}},true)})()</script>')
+    + 'document.addEventListener("load",function(e){var x=e.target;if(x&&x.tagName==="SCRIPT"&&x.src){n++;arm();window.__riffSplashStep(.05+.7*Math.min(1,n/T),"Loading app… "+Math.min(n,T)+"/"+T)}},true);'
+    // watchdog: a script request that never answers (Safari can drop the ones in flight while a new service
+    // worker takes over, right after "Updating to build…") left this screen up until the app was restarted.
+    // No progress for 12 s, or a script that failed: reload, at most twice in 3 minutes, then a tap to retry
+    + 'var K="riff_boot_retry",ok=false,t=0;function arm(){clearTimeout(t);if(!ok)t=setTimeout(stuck,12000)}'
+    + 'function stuck(){if(ok)return;var r=[];try{r=JSON.parse(sessionStorage.getItem(K)||"[]").filter(function(x){return Date.now()-x<180000})}catch(e){}'
+    + 'if(r.length<2){r.push(Date.now());try{sessionStorage.setItem(K,JSON.stringify(r))}catch(e){}window.__riffSplashStep(1,"Still loading… trying again");location.reload();return}'
+    + 'window.__riffSplashStep(0,"Couldn’t load. Tap to try again");s.onclick=function(){location.reload()}}'
+    + 'document.addEventListener("error",function(e){var x=e.target;if(x&&x.tagName==="SCRIPT"&&x.src&&!ok){clearTimeout(t);t=setTimeout(stuck,1000)}},true);'
+    + 'window.addEventListener("riff:ready",function(){ok=true;clearTimeout(t)});arm()})()</script>')
   .replace('<link rel="stylesheet" href="styles.css">', '<link rel="stylesheet" href="styles.css">\n  <link rel="stylesheet" href="mobile.css">')
+  // Google Fonts must not hold up the start: a stylesheet still loading holds back every script after it, and a
+  // request that hung (bad network, phone just woke up) kept the app on "Loading…". The fallback font shows meanwhile
+  .replace(/<link (href="https:\/\/fonts\.googleapis\.com\/css2[^"]*") rel="stylesheet">/, `<link $1 rel="stylesheet" media="print" onload="this.media='all'">`)
   .replace(/\s*<script src="assets\/hls\.min\.js"><\/script>/, '')
   .replace('<script src="audio-engine.js"></script>', '<script src="mobile-bridge.js"></script>\n  <script src="audio-engine.js"></script>')
   .replace('<script src="app.js"></script>', '<script src="app.js"></script>\n  <script src="mobile-ui.js"></script>')

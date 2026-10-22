@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Riff Library</title>
+<style>
+  :root { --bg: #121214; --card: #1e1f22; --line: #2b2d31; --text: #e6e1e5; --dim: #938f99; --accent: #d0bcff; --on-accent: #381e72; --warn: #f2b8b5; }
+  :root:not([data-theme="light"]) { color-scheme: dark; }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) { --bg: #fdf8fd; --card: #f3edf7; --line: #e7e0ec; --text: #1d1b20; --dim: #625b71; --accent: #6750a4; --on-accent: #fff; --warn: #b3261e; color-scheme: light; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { position: sticky; top: 0; z-index: 2; background: var(--bg); border-bottom: 1px solid var(--line); padding: 14px 16px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  h1 { margin: 0; font-size: 18px; }
+  #stats { color: var(--dim); font-size: 13px; }
+  .tabs { margin-left: auto; display: flex; gap: 4px; background: var(--card); border-radius: 999px; padding: 4px; }
+  .tabs button { border: 0; border-radius: 999px; padding: 6px 14px; background: none; color: var(--dim); font: inherit; font-weight: 600; cursor: pointer; }
+  .tabs button.on { background: var(--accent); color: var(--on-accent); }
+  #q { flex: 1 1 200px; max-width: 320px; padding: 8px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--text); font: inherit; }
+  main { max-width: 960px; margin: 0 auto; padding: 12px 16px 40px; }
+  .song { background: var(--card); border-radius: 16px; padding: 12px; margin: 10px 0; }
+  .row { display: flex; gap: 12px; align-items: center; }
+  .cover { width: 56px; height: 56px; border-radius: 10px; object-fit: cover; background: var(--line); flex: none; }
+  .names { min-width: 0; flex: 1; }
+  .names b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .names small { display: block; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .badge { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; background: var(--line); color: var(--dim); white-space: nowrap; }
+  .badge.review, .badge.none, .badge.needs-file { color: var(--warn); }
+  .actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  button.btn { border: 1px solid var(--line); background: none; color: var(--text); border-radius: 999px; padding: 6px 12px; font: inherit; cursor: pointer; }
+  button.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+  button.btn:disabled { opacity: .5; cursor: default; }
+  .more { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 12px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .guess { display: flex; gap: 10px; align-items: center; }
+  .guess img { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; background: var(--line); flex: none; }
+  .guess .names small { white-space: normal; }
+  form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr)); gap: 8px; }
+  label { display: grid; gap: 3px; font-size: 12px; color: var(--dim); }
+  input { min-width: 0; width: 100%; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; }
+  audio { width: 100%; height: 36px; }
+  .empty { color: var(--dim); text-align: center; padding: 48px 0; }
+  @media (max-width: 560px) { .row { flex-wrap: wrap; } .actions { width: 100%; justify-content: flex-start; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Riff Library</h1>
+  <span id="stats"></span>
+  <input id="q" type="search" placeholder="Find a song">
+  <div class="tabs"><button data-tab="check" class="on">To check</button><button data-tab="all">All</button></div>
+</header>
+<main id="list"></main>
+<script>
+const KEY = '__KEY__';
+const api = async (p, init = {}) => {
+  const r = await fetch(p, { ...init, headers: { 'x-riff-key': KEY, 'Content-Type': 'application/json', ...(init.headers || {}) } });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+};
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const STATUS = { review: 'check', none: 'not found', auto: 'named', confirmed: 'confirmed' };
+let tab = 'check';
+let songs = [];
+const open = new Set();
+
+function badge(s) {
+  if (s.status !== 'ready') return `<span class="badge ${s.status}">${s.status === 'needs-file' ? 'waiting for a phone' : 'downloading'}</span>`;
+  const m = (s.match && s.match.status) || '';
+  return m ? `<span class="badge ${m}">${STATUS[m] || m}</span>` : '';
+}
+const coverOf = (s) => s.cover || '';
+const durOf = (d) => (d ? `${Math.floor(d / 60)}:${String(Math.round(d % 60)).padStart(2, '0')}` : '');
+
+function songHtml(s) {
+  const orig = s.original && (s.original.title !== s.title || s.original.artist !== s.artist) ? `was: ${esc(s.original.artist)} - ${esc(s.original.title)}` : '';
+  const meta = [s.album, s.year, durOf(s.duration)].filter(Boolean).map(esc).join(' · ');
+  const guesses = ((s.match && s.match.candidates) || []).map((c, i) => `
+    <div class="guess">
+      <img src="${esc(c.cover)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
+      <div class="names"><b>${esc(c.artist)} - ${esc(c.title)}</b>
+        <small>${[c.album, c.year, durOf(c.duration), c.source.split(':')[0], `match ${Math.round(c.score * 100)}%`].filter(Boolean).map(esc).join(' · ')}</small></div>
+      <button class="btn primary" data-act="use" data-i="${i}">Use</button>
+    </div>`).join('');
+  return `
+  <div class="song" data-id="${s.id}">
+    <div class="row">
+      <img class="cover" src="${esc(coverOf(s))}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
+      <div class="names"><b>${esc(s.artist)} - ${esc(s.title)}</b><small>${meta}</small><small>${orig}</small></div>
+      ${badge(s)}
+      <div class="actions"><button class="btn" data-act="toggle">${open.has(s.id) ? 'Close' : 'Edit'}</button></div>
+    </div>
+    ${open.has(s.id) ? `<div class="more">
+      ${s.status === 'ready' ? `<audio controls preload="none" src="/songs/${s.id}/file?k=${KEY}"></audio>` : ''}
+      ${guesses || '<small style="color:var(--dim)">No guesses from the catalogues. Search with other words, or type the names.</small>'}
+      <form>
+        <label>Artist<input name="artist" value="${esc(s.artist)}"></label>
+        <label>Title<input name="title" value="${esc(s.title)}"></label>
+        <label>Album<input name="album" value="${esc(s.album)}"></label>
+        <label>Year<input name="year" value="${esc(s.year)}"></label>
+        <label style="grid-column: 1 / -1">Cover URL<input name="cover" value="${esc(s.cover)}"></label>
+      </form>
+      <div class="actions" style="justify-content:flex-start">
+        <button class="btn primary" data-act="save">Save these names</button>
+        <button class="btn" data-act="search">Search with these words</button>
+        <button class="btn" data-act="delete" style="margin-left:auto">Delete from library</button>
+      </div>
+    </div>` : ''}
+  </div>`;
+}
+
+function render() {
+  const q = document.getElementById('q').value.trim().toLowerCase();
+  let list = songs;
+  if (tab === 'check') list = list.filter((s) => !s.locked && s.match && ['review', 'none'].includes(s.match.status));
+  if (q) list = list.filter((s) => `${s.artist} ${s.title} ${s.album} ${s.original && s.original.title}`.toLowerCase().includes(q));
+  list = [...list].sort((a, b) => b.addedAt - a.addedAt);
+  document.getElementById('list').innerHTML = list.length ? list.map(songHtml).join('')
+    : `<div class="empty">${tab === 'check' ? 'Nothing to check: every song has its names.' : 'No songs yet. Finish or like a song on a phone.'}</div>`;
+}
+
+async function load() {
+  const [st, all] = await Promise.all([api('/status'), api('/songs')]);
+  songs = all.songs;
+  const gb = (b) => (b / 1024 ** 3).toFixed(1);
+  const check = songs.filter((s) => !s.locked && s.match && ['review', 'none'].includes(s.match.status)).length;
+  document.getElementById('stats').textContent = `${st.songs} songs · ${gb(st.usedBytes)} of ${gb(st.maxBytes)} GB · ${check} to check${st.pending ? ` · ${st.pending} downloading` : ''}`;
+  render();
+}
+
+document.querySelector('.tabs').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  tab = b.dataset.tab;
+  document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('on', x === b));
+  render();
+});
+document.getElementById('q').addEventListener('input', render);
+document.getElementById('list').addEventListener('click', async (e) => {
+  const b = e.target.closest('button[data-act]');
+  if (!b) return;
+  const card = b.closest('.song');
+  const id = card.dataset.id;
+  const form = card.querySelector('form');
+  const fields = form ? Object.fromEntries(new FormData(form)) : {};
+  b.disabled = true;
+  try {
+    if (b.dataset.act === 'toggle') { if (open.has(id)) open.delete(id); else open.add(id); }
+    if (b.dataset.act === 'use') await api(`/songs/${id}/match`, { method: 'POST', body: JSON.stringify({ index: Number(b.dataset.i) }) });
+    if (b.dataset.act === 'save') { await api(`/songs/${id}/match`, { method: 'POST', body: JSON.stringify(fields) }); open.delete(id); }
+    if (b.dataset.act === 'search') await api(`/songs/${id}/search`, { method: 'POST', body: JSON.stringify({ artist: fields.artist, title: fields.title }) });
+    if (b.dataset.act === 'delete') {
+      if (!confirm('Delete this song and its file from the library? Phones keep their own copies.')) { b.disabled = false; return; }
+      await api(`/songs/${id}`, { method: 'DELETE' });
+    }
+    if (b.dataset.act === 'use') open.delete(id);
+    await load();
+  } catch (err) { alert(err.message); b.disabled = false; }
+});
+load();
+setInterval(() => { if (!document.querySelector('.more')) load(); }, 15000);
+</script>
+</body>
+</html>

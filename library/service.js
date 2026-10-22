@@ -11,7 +11,12 @@
 //   PUT    /songs/<id>/file?ext=   a phone uploads the audio for a song the PC couldn't download
 //   PATCH  /songs/<id>             {title, artist, album, year, cover}: our names for it
 //   DELETE /songs/<id>
-// Every request carries one of the keys from config.json (header x-riff-key); the key says whose phone it is.
+//   GET    /review                 songs whose names the catalogues weren't sure about, with their guesses
+//   POST   /songs/<id>/match       {index} (one of its guesses) or {title, artist, ...}: confirm its names
+//   POST   /songs/<id>/search      {artist, title}: ask the catalogues again, with better words
+//   GET    /songs/<id>/cover       the cover written into the file
+//   GET    /ui                     the library page (only on this PC, no key needed)
+// Every other request carries one of the keys from config.json (header x-riff-key); the key says whose phone it is.
 
 const fs = require('fs');
 const os = require('os');
@@ -20,6 +25,8 @@ const http = require('http');
 const crypto = require('crypto');
 const { Store } = require('./store');
 const downloader = require('./downloader');
+const { createNamer } = require('./metadata');
+const lookup = require('./lookup');
 
 const DEFAULT_DIR = path.join(os.homedir(), 'Music', 'Riff Library');
 const MAX_ATTEMPTS = 3;
@@ -42,11 +49,12 @@ function loadConfig(dir) {
   return cfg;
 }
 
-function createService({ dir = DEFAULT_DIR, config, download = downloader.download, ensureTools, log = console.log, retryMs = 30000 } = {}) {
+function createService({ dir = DEFAULT_DIR, config, download = downloader.download, ensureTools, log = console.log, retryMs = 30000, find = lookup.find, writeTags, namerGapMs } = {}) {
   fs.mkdirSync(dir, { recursive: true });
   const cfg = config || loadConfig(dir);
   const store = new Store(dir);
   const maxBytes = cfg.maxGB * 1024 ** 3;
+  const namer = createNamer({ store, lookup: { find, isSure: lookup.isSure }, ...(writeTags ? { writeTags } : {}), log, ...(namerGapMs !== undefined ? { gapMs: namerGapMs } : {}) });
 
   // ---- downloads: two at a time; a song the PC can't get waits for a phone to send its file ----
   const queue = [];
@@ -70,6 +78,7 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
       const file = await download(url, store.songsDir, song.id, { proxy: cfg.proxy });
       store.setFile(song.id, file.name, file.size);
       log(`+ ${song.artist} - ${song.title} (${Math.round(file.size / 1024)} KB)`);
+      namer.add(song.id);
     } catch (e) {
       song.attempts += 1;
       const giveUp = song.attempts >= MAX_ATTEMPTS;
@@ -131,6 +140,7 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
       fs.renameSync(tmp, path.join(store.songsDir, name));
       store.setFile(song.id, name, size);
       log(`+ ${song.artist} - ${song.title} (from a phone, ${Math.round(size / 1024)} KB)`);
+      namer.add(song.id);
       send(res, 200, { id: song.id, status: 'ready' });
     });
   }
@@ -143,6 +153,13 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
     res.setHeader('Access-Control-Expose-Headers', 'content-length, content-range, accept-ranges');
     if (req.method === 'OPTIONS') return send(res, 204, '');
     const u = new URL(req.url, 'http://x');
+    // the library page, for whoever sits at this PC: not through the tunnel (cloudflared adds cf-* headers)
+    if (req.method === 'GET' && u.pathname === '/ui') {
+      const local = /^(::1|127\.0\.0\.1|::ffff:127\.0\.0\.1)$/.test(req.socket.remoteAddress || '') && !req.headers['cf-connecting-ip'];
+      if (!local) return send(res, 403, 'open it on the PC itself');
+      const key = Object.keys(cfg.users).find((k) => cfg.users[k] === 'main') || Object.keys(cfg.users)[0];
+      return send(res, 200, fs.readFileSync(path.join(__dirname, 'ui.html'), 'utf8').replace('__KEY__', key), { 'Content-Type': 'text/html; charset=utf-8' });
+    }
     const user = cfg.users[req.headers['x-riff-key'] || u.searchParams.get('k') || ''];
     if (!user) return send(res, 401, 'key required');
     try {
@@ -154,17 +171,44 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
       if (req.method === 'POST' && u.pathname === '/ingest') {
         const body = await readJson(req);
         const { song, created } = store.ingest({ ...body, user });
-        if (created) log(`> ${song.artist} - ${song.title} (${body.reason || 'finished'}, ${user})`);
+        if (created) { log(`> ${song.artist} - ${song.title} (${body.reason || 'finished'}, ${user})`); namer.add(song.id); }
         enqueue(song);
         return send(res, 200, { id: song.id, status: song.status, needFile: song.status === 'needs-file' });
       }
-      const m = /^\/songs\/([0-9a-f]+)(\/file)?$/.exec(u.pathname);
+      if (req.method === 'GET' && u.pathname === '/review') {
+        return send(res, 200, { songs: store.songs.filter((s) => !s.locked && s.match && ['review', 'none'].includes(s.match.status)) });
+      }
+      if (req.method === 'GET' && u.pathname === '/songs') return send(res, 200, { songs: store.songs });
+      const m = /^\/songs\/([0-9a-f]+)(?:\/(file|cover|match|search))?$/.exec(u.pathname);
       const song = m && store.get(m[1]);
       if (!song) return send(res, 404, 'not found');
-      if (m[2] && req.method === 'GET') return serveFile(req, res, song);
-      if (m[2] && req.method === 'PUT') return receiveFile(req, res, song, String(u.searchParams.get('ext') || '').toLowerCase());
-      if (!m[2] && req.method === 'PATCH') return send(res, 200, store.update(song.id, await readJson(req)));
-      if (!m[2] && req.method === 'DELETE') { store.remove(song.id); return send(res, 200, { ok: true }); }
+      const part = m[2] || '';
+      if (part === 'file' && req.method === 'GET') return serveFile(req, res, song);
+      if (part === 'file' && req.method === 'PUT') return receiveFile(req, res, song, String(u.searchParams.get('ext') || '').toLowerCase());
+      if (part === 'cover' && req.method === 'GET') {
+        const p = path.join(dir, 'covers', `${song.id}.jpg`);
+        if (!fs.existsSync(p)) return send(res, 404, 'no cover');
+        res.writeHead(200, { 'Content-Type': 'image/jpeg' });
+        return fs.createReadStream(p).pipe(res);
+      }
+      if (part === 'match' && req.method === 'POST') {
+        const body = await readJson(req);
+        const guesses = (song.match && song.match.candidates) || [];
+        const guess = Number.isInteger(body.index) ? guesses[body.index] : null;
+        if (Number.isInteger(body.index) && !guess) return send(res, 400, 'no such guess');
+        const done = store.confirm(song.id, guess ? namer.pickFields(guess) : body, guess ? guess.source : '');
+        namer.add(song.id); // the file's tags follow
+        return send(res, 200, done);
+      }
+      if (part === 'search' && req.method === 'POST') {
+        const body = await readJson(req);
+        const { candidates } = await find({ original: { title: String(body.title || ''), artist: String(body.artist || '') }, duration: song.duration });
+        song.match = { ...(song.match || { status: 'review' }), candidates: candidates.map((c) => ({ ...c, score: Math.round(c.score.total * 100) / 100 })) };
+        store.save();
+        return send(res, 200, { candidates: song.match.candidates });
+      }
+      if (!part && req.method === 'PATCH') { const done = store.update(song.id, await readJson(req)); namer.add(song.id); return send(res, 200, done); }
+      if (!part && req.method === 'DELETE') { store.remove(song.id); return send(res, 200, { ok: true }); }
       return send(res, 405, 'method not allowed');
     } catch (e) {
       return send(res, 400, e.message);
@@ -172,9 +216,13 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
   });
 
   // songs left pending last time (the PC was switched off mid-download) go back in the queue
-  const resume = () => store.songs.filter((s) => s.status === 'pending').forEach(enqueue);
+  // songs not named (or not tagged) yet are, too
+  const resume = () => {
+    store.songs.filter((s) => s.status === 'pending').forEach(enqueue);
+    store.songs.filter(namer.needsWork).forEach((s) => namer.add(s.id));
+  };
 
-  return { server, store, config: cfg, resume, idle: () => active.size === 0 && queue.length === 0 };
+  return { server, store, config: cfg, resume, idle: () => active.size === 0 && queue.length === 0 && namer.idle() };
 }
 
 if (require.main === module) {
@@ -251,6 +299,7 @@ if (require.main === module) {
     console.log(`Riff library: ${dir}`);
     console.log(`${s.songs.length} songs, ${(s.usedBytes() / 1024 ** 3).toFixed(2)} of ${cfg.maxGB} GB, http://localhost:${cfg.port}`);
     console.log(`keys (config.json): ${Object.entries(cfg.users).map(([k, v]) => `${v} = ${k}`).join(', ')}`);
+    console.log(`library page (names to check): http://localhost:${cfg.port}/ui`);
     svc.resume();
     startTunnel(pids);
   });

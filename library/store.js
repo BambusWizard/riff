@@ -110,6 +110,36 @@ class Store {
     return song;
   }
 
+  // what the catalogues say the song is (metadata.js). A song edited or confirmed by hand is left alone
+  setMatch(id, fields, match) {
+    const song = this.get(id);
+    if (!song || song.locked) return song;
+    for (const k of EDITABLE) if (fields[k]) song[k] = String(fields[k]);
+    song.match = { ...match, at: Date.now() };
+    this.save();
+    return song;
+  }
+
+  // a candidate the user picked: applied and locked, like a hand edit
+  confirm(id, fields, source) {
+    const song = this.get(id);
+    if (!song) return null;
+    for (const k of EDITABLE) if (fields[k] !== undefined) song[k] = String(fields[k] || '');
+    song.match = { status: 'confirmed', source: source || '', at: Date.now() };
+    song.locked = true;
+    this.save();
+    return song;
+  }
+
+  // the file's tags were written for this version of the names (metadata.js)
+  setTagged(id, stamp, size) {
+    const song = this.get(id);
+    if (!song) return;
+    song.tagged = stamp;
+    if (song.file && size) song.file.size = size;
+    this.save();
+  }
+
   // edited by hand: these fields are ours now, and later automatic matching leaves them alone
   update(id, fields) {
     const song = this.get(id);
@@ -118,7 +148,7 @@ class Store {
     for (const k of EDITABLE) {
       if (fields[k] !== undefined && String(fields[k]) !== song[k]) { song[k] = String(fields[k]); changed = true; }
     }
-    if (changed) { song.locked = true; this.save(); }
+    if (changed) { song.locked = true; song.match = { ...(song.match || {}), status: 'confirmed', at: Date.now() }; this.save(); }
     return song;
   }
 
@@ -141,7 +171,7 @@ class Store {
       rev: this.rev,
       songs: this.songs.map((s) => ({
         id: s.id, title: s.title, artist: s.artist, album: s.album, year: s.year, cover: s.cover, duration: s.duration,
-        sources: s.sources, ready: s.status === 'ready',
+        sources: s.sources, ready: s.status === 'ready', named: !!s.match && ['auto', 'confirmed'].includes(s.match.status),
       })),
     };
   }

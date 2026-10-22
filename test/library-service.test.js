@@ -14,10 +14,12 @@ const KEY2 = 'k-user2';
 const config = { users: { [KEY]: 'main', [KEY2]: 'user2' }, port: 0, maxGB: 1, proxy: '' };
 const AUDIO = Buffer.alloc(200 * 1024, 7);
 
-// a service on a free port with a fake yt-dlp: `fails` downloads fail, then each writes AUDIO as m4a
-async function start(t, { fails = 0, delayMs = 0 } = {}) {
+// a service on a free port with a fake yt-dlp: `fails` downloads fail, then each writes AUDIO as m4a.
+// The catalogues answer `candidates` (none by default: no network in tests); tags written are recorded
+async function start(t, { fails = 0, delayMs = 0, candidates = [] } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'riff-lib-'));
   const calls = [];
+  const tagged = [];
   const download = async (url, songsDir, base) => {
     calls.push(url);
     if (delayMs) await new Promise((r) => setTimeout(r, delayMs));
@@ -25,7 +27,15 @@ async function start(t, { fails = 0, delayMs = 0 } = {}) {
     fs.writeFileSync(path.join(songsDir, `${base}.m4a`), AUDIO);
     return { name: `${base}.m4a`, size: AUDIO.length };
   };
-  const svc = createService({ dir, config, download, log: () => {}, retryMs: 5 });
+  const { parseName } = require('../library/names');
+  const { score } = require('../library/lookup');
+  const find = async (s) => {
+    const parsed = parseName(s.original.title, s.original.artist);
+    const want = { ...parsed, duration: s.duration };
+    return { parsed, candidates: candidates.map((c) => ({ ...c, score: score(c, want) })).sort((a, b) => b.score.total - a.score.total) };
+  };
+  const writeTags = async (file, meta) => { tagged.push(`${meta.artist} - ${meta.title}`); return AUDIO.length; };
+  const svc = createService({ dir, config, download, log: () => {}, retryMs: 5, find, writeTags, namerGapMs: 0 });
   await new Promise((r) => svc.server.listen(0, r));
   t.after(() => { svc.server.close(); fs.rmSync(dir, { recursive: true, force: true }); });
   const base = `http://127.0.0.1:${svc.server.address().port}`;
@@ -35,7 +45,7 @@ async function start(t, { fails = 0, delayMs = 0 } = {}) {
     return { status: r.status, headers: r.headers, body: type.includes('json') ? await r.json() : Buffer.from(await r.arrayBuffer()) };
   };
   const settle = async () => { for (let i = 0; i < 200 && !svc.idle(); i++) await new Promise((r) => setTimeout(r, 10)); };
-  return { svc, dir, api, calls, settle };
+  return { svc, dir, api, calls, settle, tagged };
 }
 
 const song = { platform: 'youtube', id: 'abc123', title: 'Lida - Song', artist: 'minecrafter', duration: 180, reason: 'finished' };
@@ -106,12 +116,12 @@ test('our names replace the service ones and stay locked; the original is kept',
   const { api, settle, svc } = await start(t);
   const { body } = await api('/ingest', { method: 'POST', body: song });
   await settle();
-  const edited = (await api(`/songs/${body.id}`, { method: 'PATCH', body: { title: 'Song', artist: 'Lida' } })).body;
+  const edited = (await api(`/songs/${body.id}`, { method: 'PATCH', body: { title: 'Song (Acoustic)', artist: 'Lida', album: 'Home' } })).body;
   assert.strictEqual(edited.locked, true);
   assert.deepStrictEqual(edited.original, { title: 'Lida - Song', artist: 'minecrafter' });
   const c = (await api('/catalog')).body.songs[0];
-  assert.strictEqual(`${c.artist} - ${c.title}`, 'Lida - Song');
-  assert.strictEqual(svc.store.songs[0].title, 'Song');
+  assert.strictEqual(`${c.artist} - ${c.title} / ${c.album}`, 'Lida - Song (Acoustic) / Home');
+  assert.strictEqual(svc.store.songs[0].title, 'Song (Acoustic)');
 });
 
 test('the catalog survives a restart', async (t) => {
@@ -142,4 +152,67 @@ test('a phone asking again while the PC is still downloading does not start a se
   await api('/ingest', { key: KEY2, method: 'POST', body: song });
   await settle();
   assert.strictEqual(calls.length, 1);
+});
+
+// ---- names (metadata.js) ----
+const sure = { source: 'itunes:1', title: 'Song', artist: 'Lida', album: 'First Album', year: '2021', cover: 'https://x/c.jpg', duration: 181 };
+const other = { source: 'deezer:2', title: 'Another Song', artist: 'Somebody', album: 'B', year: '', cover: '', duration: 240 };
+
+test('a catalogue that is sure renames the song, and the file gets the new tags', async (t) => {
+  const { api, settle, svc, tagged } = await start(t, { candidates: [other, sure] });
+  await api('/ingest', { method: 'POST', body: song });
+  await settle();
+  const s = svc.store.songs[0];
+  assert.strictEqual(s.match.status, 'auto');
+  assert.deepStrictEqual([s.artist, s.title, s.album, s.year], ['Lida', 'Song', 'First Album', '2021']);
+  assert.deepStrictEqual(s.original, { title: 'Lida - Song', artist: 'minecrafter' });
+  assert.deepStrictEqual(tagged, ['Lida - Song']);
+  assert.strictEqual((await api('/catalog')).body.songs[0].named, true);
+});
+
+test('an unsure answer keeps the cleaned-up upload name and waits for review; picking a guess confirms it', async (t) => {
+  const { api, settle, svc, tagged } = await start(t, { candidates: [{ ...sure, title: 'Song Two', duration: 300 }] });
+  const { body } = await api('/ingest', { method: 'POST', body: song });
+  await settle();
+  let s = svc.store.get(body.id);
+  assert.strictEqual(s.match.status, 'review');
+  assert.deepStrictEqual([s.artist, s.title], ['Lida', 'Song']);
+  assert.strictEqual((await api('/review')).body.songs.length, 1);
+  await api(`/songs/${body.id}/match`, { method: 'POST', body: { index: 0 } });
+  await settle();
+  s = svc.store.get(body.id);
+  assert.strictEqual(s.match.status, 'confirmed');
+  assert.strictEqual(s.locked, true);
+  assert.strictEqual(s.title, 'Song Two');
+  assert.strictEqual((await api('/review')).body.songs.length, 0);
+  assert.deepStrictEqual(tagged, ['Lida - Song', 'Lida - Song Two']); // tagged again with the confirmed names
+});
+
+test('names typed by hand are never replaced by a catalogue', async (t) => {
+  const { api, settle, svc } = await start(t, { candidates: [sure] });
+  const { body } = await api('/ingest', { method: 'POST', body: { ...song, id: 'other1' } });
+  await settle();
+  await api(`/songs/${body.id}`, { method: 'PATCH', body: { title: 'My Title' } });
+  await settle();
+  svc.resume(); // a restart asks again about songs that need it
+  await settle();
+  assert.strictEqual(svc.store.get(body.id).title, 'My Title');
+});
+
+test('searching again with better words replaces the guesses', async (t) => {
+  const { api, settle } = await start(t, { candidates: [other] });
+  const { body } = await api('/ingest', { method: 'POST', body: song });
+  await settle();
+  const r = await api(`/songs/${body.id}/search`, { method: 'POST', body: { artist: 'Somebody', title: 'Another Song' } });
+  assert.strictEqual(r.body.candidates[0].source, 'deezer:2');
+});
+
+test('the library page opens only on the PC itself', async (t) => {
+  const { svc } = await start(t);
+  const base = `http://127.0.0.1:${svc.server.address().port}`;
+  const local = await fetch(`${base}/ui`);
+  assert.strictEqual(local.status, 200);
+  assert.ok((await local.text()).includes(KEY));
+  const viaTunnel = await fetch(`${base}/ui`, { headers: { 'cf-connecting-ip': '1.2.3.4' } });
+  assert.strictEqual(viaTunnel.status, 403);
 });

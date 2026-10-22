@@ -47,25 +47,53 @@ applyRowBadges();
     openSheet();
   });
 
-  // swipe down on the sheet's top area to close it
-  let startY = null;
+  // swipe the sheet down to close it. The sheet and its controls follow the finger 1:1 (no CSS transition
+  // chasing it), and the app behind is shown while dragging (with the sheet open it is hidden to save work)
+  let startX = null, startY = null, vertical = null, lastDy = 0;
+  // body.np-settling (mobile.css) animates the release; while the finger moves nothing is animated
+  const moveSheet = (dy, animate) => {
+    document.body.classList.toggle('np-settling', animate);
+    for (const n of [panel, playbar]) n.style.transform = dy ? `translateY(${dy}px)` : '';
+  };
+  const resetSheet = () => {
+    document.body.classList.remove('np-settling', 'np-dragging');
+    for (const n of [panel, playbar]) n.style.transform = '';
+  };
   panel.addEventListener('touchstart', (e) => {
     const t = e.touches[0];
     const lyrics = document.getElementById('lyrics-container');
-    startY = (lyrics && lyrics.contains(e.target) && lyrics.scrollTop > 0) ? null : t.clientY;
+    const cover = document.getElementById('cover-container');
+    const busy = (lyrics && lyrics.contains(e.target) && lyrics.scrollTop > 0) || (cover && cover.contains(e.target));
+    startY = busy ? null : t.clientY; // a scrolled lyrics list scrolls; the cover swipes sideways to skip
+    startX = t.clientX; vertical = null; lastDy = 0;
   }, { passive: true });
   panel.addEventListener('touchmove', (e) => {
     if (startY === null) return;
+    const dx = e.touches[0].clientX - startX;
     const dy = e.touches[0].clientY - startY;
-    if (dy > 0) panel.style.transform = `translateY(${dy}px)`;
+    if (vertical === null && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+      vertical = dy > 0 && Math.abs(dy) > Math.abs(dx);
+      if (vertical) document.body.classList.add('np-dragging');
+    }
+    if (!vertical) return;
+    lastDy = Math.max(0, dy);
+    moveSheet(lastDy, false);
   }, { passive: true });
-  panel.addEventListener('touchend', (e) => {
+  const endDrag = () => {
     if (startY === null) return;
-    const dy = e.changedTouches[0].clientY - startY;
-    panel.style.transform = '';
     startY = null;
-    if (dy > 110) closeSheet();
-  });
+    if (!vertical) return;
+    if (lastDy > 110) {
+      // finish the slide down, then really close (the sheet then sits off screen where the slide left it)
+      moveSheet(window.innerHeight, true);
+      setTimeout(() => { closeSheet(); resetSheet(); }, 260);
+    } else {
+      moveSheet(0, true);
+      setTimeout(resetSheet, 260);
+    }
+  };
+  panel.addEventListener('touchend', endDrag);
+  panel.addEventListener('touchcancel', endDrag);
 
   // custom background: rebuild its file URL from the app-relative path (it changes on every reinstall)
   const fixBackground = async () => {

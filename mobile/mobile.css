@@ -549,3 +549,12 @@ html.is-mobile body:not(.np-open) #np-like { display: none !important; }
 
 /* the timeline follows the finger instead of scrolling or closing the sheet */
 html.is-mobile #scrubber-track { touch-action: none; }
+
+/* while the Now Playing sheet is dragged down, the app behind it is visible again (hidden while open) */
+html.is-mobile body.np-open.np-dragging .main-content,
+html.is-mobile body.np-open.np-dragging .sidebar,
+html.is-mobile body.np-open.np-dragging .titlebar,
+html.is-mobile body.np-open.np-dragging .top-nav { visibility: visible !important; }
+html.is-mobile body.np-dragging #right-panel { transition: none !important; }
+html.is-mobile body.np-settling #right-panel,
+html.is-mobile body.np-settling .playbar { transition: transform .26s cubic-bezier(.2, .8, .2, 1) !important; }

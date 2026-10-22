@@ -69,15 +69,22 @@ html = html
   // loading screen until app.js is ready (and while a newer build loads); bridge.js hides it on riff:ready
   .replace('</head>', '  <style>#riff-splash{position:fixed;inset:0;z-index:2147483000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#121214;color:#e6e1e5;font:500 15px -apple-system,system-ui,sans-serif;transition:opacity .25s ease}'
     + '#riff-splash.gone{opacity:0;pointer-events:none}#riff-splash i{width:14px;height:14px;border-radius:50%;background:#d0bcff;animation:riff-pulse 1s ease-in-out infinite alternate}'
-    + '#riff-splash b{font-size:22px;letter-spacing:.01em}#riff-splash span{min-height:1em;font-size:12px;color:#938f99}'
+    + '#riff-splash b{font-size:22px;letter-spacing:.01em}#riff-splash span{min-height:1em;font-size:12px;color:#938f99;font-variant-numeric:tabular-nums}'
+    + '#riff-splash s{display:block;width:150px;height:3px;border-radius:2px;background:rgba(255,255,255,.12);overflow:hidden;text-decoration:none}'
+    + '#riff-splash em{display:block;height:100%;width:3%;border-radius:2px;background:#d0bcff;transition:width .3s ease}'
     + '@keyframes riff-pulse{from{transform:scale(.7);opacity:.5}to{transform:scale(1.15);opacity:1}}</style>\n</head>')
-  .replace(/<body([^>]*)>/, '<body$1>\n  <div id="riff-splash"><i></i><b>Riff</b><span></span></div>')
+  // progress: the page's scripts loading (counted by the inline script below), then bridge.js starting the player
+  .replace(/<body([^>]*)>/, '<body$1>\n  <div id="riff-splash"><i></i><b>Riff</b><s><em></em></s><span>Loading…</span></div>'
+    + '\n  <script>(function(){var n=0,T=__RIFF_SCRIPTS__,s=document.getElementById("riff-splash");'
+    + 'window.__riffSplashStep=function(p,t){if(!s)return;s.querySelector("em").style.width=Math.round(p*100)+"%";if(t!=null)s.querySelector("span").textContent=t};'
+    + 'document.addEventListener("load",function(e){var x=e.target;if(x&&x.tagName==="SCRIPT"&&x.src){n++;window.__riffSplashStep(.05+.7*Math.min(1,n/T),"Loading app… "+Math.min(n,T)+"/"+T)}},true)})()</script>')
   .replace('<link rel="stylesheet" href="styles.css">', '<link rel="stylesheet" href="styles.css">\n  <link rel="stylesheet" href="mobile.css">')
   .replace('<script src="audio-engine.js"></script>', '<script src="mobile-bridge.js"></script>\n  <script src="audio-engine.js"></script>')
   .replace('<script src="app.js"></script>', '<script src="app.js"></script>\n  <script src="mobile-ui.js"></script>')
   // Now Playing is a sheet on phones and starts closed
   .replace('<aside class="right-panel lyrics-empty" id="right-panel">', '<aside class="right-panel lyrics-empty hidden" id="right-panel">')
   .replace(/(<(?:script|link)\b[^>]*?\b(?:src|href)=")((?!https?:|\/\/|data:)[^"?#]+\.(?:js|css))"/g, `$1$2?v=${VERSION}"`);
+html = html.replace('__RIFF_SCRIPTS__', String((html.match(/<script\b[^>]*\bsrc=/g) || []).length));
 writeFileSync(join(out, 'index.html'), html);
 writeFileSync(join(out, 'version.json'), JSON.stringify({ version: VERSION }));
 

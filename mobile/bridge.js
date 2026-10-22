@@ -89,8 +89,11 @@ globalThis.__riffFetch = async (input, init) => {
 // ---- the in-app "server" ----
 let ready;
 let server = null;
+const splashStep = (p, text) => { if (window.__riffSplashStep) window.__riffSplashStep(p, text); };
 async function start() {
+  splashStep(0.8, 'Opening your library…');
   await fs.init();
+  splashStep(0.9, 'Starting the player…');
   server = require('../server.js');
   server.startServer(PORT);
 }
@@ -354,7 +357,7 @@ if (!Capacitor.isNativePlatform() && RIFF_PROXY_URL) {
     show(text) { if (!splash) return; splash.querySelector('span').textContent = text || ''; splash.classList.remove('gone'); },
     hide,
   };
-  window.addEventListener('riff:ready', () => requestAnimationFrame(hide), { once: true });
+  window.addEventListener('riff:ready', () => { splashStep(1, 'Ready'); setTimeout(() => requestAnimationFrame(hide), 150); }, { once: true });
   setTimeout(hide, 15000); // never stuck behind it, whatever fails
 }
 

@@ -49,7 +49,7 @@ function loadConfig(dir) {
   return cfg;
 }
 
-function createService({ dir = DEFAULT_DIR, config, download = downloader.download, ensureTools, log = console.log, retryMs = 30000, find = lookup.find, writeTags, namerGapMs } = {}) {
+function createService({ dir = DEFAULT_DIR, config, download = downloader.download, search = downloader.searchYouTube, ensureTools, log = console.log, retryMs = 30000, find = lookup.find, writeTags, namerGapMs } = {}) {
   fs.mkdirSync(dir, { recursive: true });
   const cfg = config || loadConfig(dir);
   const store = new Store(dir);
@@ -70,22 +70,51 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
     }
   };
   async function fetchSong(song) {
-    const url = downloader.sourceUrl(song);
-    if (!url) { store.setStatus(song.id, 'needs-file', 'no source the PC can download from'); return; }
     if (store.usedBytes() >= maxBytes) { store.setStatus(song.id, 'pending', 'library is full'); return; }
     try {
       if (ensureTools) { toolsReady = toolsReady || ensureTools(); await toolsReady; }
-      const file = await download(url, store.songsDir, song.id, { proxy: cfg.proxy });
+      let file;
+      try {
+        const url = downloader.sourceUrl(song);
+        if (!url) throw new Error('no source the PC can download from');
+        file = await download(url, store.songsDir, song.id, { proxy: cfg.proxy });
+      } catch (e) {
+        // once per song: the same song on YouTube, under our name
+        if (song.searched) throw e;
+        song.searched = true;
+        store.save();
+        const found = await search(song, { proxy: cfg.proxy });
+        if (!found) throw e;
+        const key = `youtube:${found.id}`;
+        const other = store.bySource(key);
+        if (other && other.id !== song.id) {
+          const into = store.merge(song.id, other.id);
+          log(`= ${song.artist} - ${song.title}: the same song as ${into.artist} - ${into.title}`);
+          enqueue(into);
+          return;
+        }
+        store.addSource(song.id, key, found.url);
+        song.found = key;
+        store.save();
+        log(`? ${song.artist} - ${song.title}: found on YouTube (${found.id})`);
+        file = await download(found.url, store.songsDir, song.id, { proxy: cfg.proxy });
+      }
       store.setFile(song.id, file.name, file.size);
       log(`+ ${song.artist} - ${song.title} (${Math.round(file.size / 1024)} KB)`);
       namer.add(song.id);
     } catch (e) {
       song.attempts += 1;
-      const giveUp = song.attempts >= MAX_ATTEMPTS;
+      const giveUp = song.attempts >= MAX_ATTEMPTS || !downloader.sourceUrl(song);
       store.setStatus(song.id, giveUp ? 'needs-file' : 'pending', e.message);
       log(`! ${song.artist} - ${song.title}: ${e.message}${giveUp ? ' (waiting for a phone to send it)' : ''}`);
       if (!giveUp) setTimeout(() => enqueue(store.get(song.id) || {}), retryMs * song.attempts);
     }
+  }
+
+  // at start: what was left to download, and songs given up on before the PC could look for them on YouTube
+  for (const s of store.songs) {
+    if (s.status === 'needs-file' && !s.searched) { s.status = 'pending'; s.attempts = 0; }
+    if (s.status === 'pending') enqueue(s);
   }
 
   // ---- HTTP ----

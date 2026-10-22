@@ -56,3 +56,16 @@ test('one of several artists is enough', () => {
   assert.strictEqual(artistSimilarity('GSPD & DEAD BLONDE', 'GSPD'), 1);
   assert.strictEqual(artistSimilarity('Lida feat. Someone', 'Lida'), 1);
 });
+
+test('the same song on YouTube: our artist and title, the same length', () => {
+  const { pickResult } = require('../library/downloader');
+  const song = { artist: 'GSPD', title: 'Блондинка', duration: 205 };
+  const results = [
+    { id: 'live', duration: 276, channel: 'Tatsuya_S', title: 'GSPD - Блондинка (05.01.2025)' },
+    { id: 'other', duration: 204, channel: 'GSPD & DEAD BLONDE', title: 'GSPD - Восьмиклассница' },
+    { id: 'reup', duration: 206, channel: 'uspekh', title: 'GSPD - Блондинка' },
+    { id: 'own', duration: 206, channel: 'GSPD & DEAD BLONDE', title: 'Блондинка' },
+  ];
+  assert.strictEqual(pickResult(song, results).id, 'own');
+  assert.strictEqual(pickResult(song, results.slice(0, 2)), null);
+});

@@ -161,6 +161,31 @@ class Store {
     return true;
   }
 
+  // another place to get the song from (found on YouTube by its name): phones playing it there get our copy too
+  addSource(id, key, url) {
+    const song = this.get(id);
+    if (!song || this.bySource(key)) return song;
+    song.sources.push(key);
+    if (url) song.urls[key] = url;
+    this.save();
+    return song;
+  }
+
+  // the same song came in twice (once from Yandex, once from YouTube): one entry keeps both sources, reasons and users
+  merge(fromId, intoId) {
+    const from = this.get(fromId);
+    const into = this.get(intoId);
+    if (!from || !into || from === into) return into;
+    for (const k of from.sources) if (!into.sources.includes(k)) into.sources.push(k);
+    into.urls = { ...from.urls, ...into.urls };
+    for (const r of from.reasons) if (!into.reasons.includes(r)) into.reasons.push(r);
+    for (const u of from.users) if (!into.users.includes(u)) into.users.push(u);
+    this.songs.splice(this.songs.indexOf(from), 1);
+    if (from.file) { try { fs.unlinkSync(path.join(this.songsDir, from.file.name)); } catch (e) {} }
+    this.save();
+    return into;
+  }
+
   filePath(song) { return song && song.file ? path.join(this.songsDir, song.file.name) : null; }
 
   usedBytes() { return this.songs.reduce((n, s) => n + (s.file ? s.file.size : 0), 0); }

@@ -14,16 +14,16 @@ const KEY2 = 'k-user2';
 const config = { users: { [KEY]: 'main', [KEY2]: 'user2' }, port: 0, maxGB: 1, proxy: '' };
 const AUDIO = Buffer.alloc(200 * 1024, 7);
 
-// a service on a free port with a fake yt-dlp: `fails` downloads fail, then each writes AUDIO as m4a.
-// The catalogues answer `candidates` (none by default: no network in tests); tags written are recorded
-async function start(t, { fails = 0, delayMs = 0, candidates = [] } = {}) {
+// a service on a free port with a fake yt-dlp: `fails` downloads fail (or those of the URLs `fails` picks), then each writes AUDIO as m4a.
+// The YouTube search finds `found` ({id, url}, none by default). The catalogues answer `candidates` (none by default: no network in tests); tags written are recorded
+async function start(t, { fails = 0, delayMs = 0, candidates = [], found = null } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'riff-lib-'));
   const calls = [];
   const tagged = [];
   const download = async (url, songsDir, base) => {
     calls.push(url);
     if (delayMs) await new Promise((r) => setTimeout(r, delayMs));
-    if (calls.length <= fails) throw new Error('blocked');
+    if (typeof fails === 'function' ? fails(url) : calls.length <= fails) throw new Error('blocked');
     fs.writeFileSync(path.join(songsDir, `${base}.m4a`), AUDIO);
     return { name: `${base}.m4a`, size: AUDIO.length };
   };
@@ -35,7 +35,7 @@ async function start(t, { fails = 0, delayMs = 0, candidates = [] } = {}) {
     return { parsed, candidates: candidates.map((c) => ({ ...c, score: score(c, want) })).sort((a, b) => b.score.total - a.score.total) };
   };
   const writeTags = async (file, meta) => { tagged.push(`${meta.artist} - ${meta.title}`); return AUDIO.length; };
-  const svc = createService({ dir, config, download, log: () => {}, retryMs: 5, find, writeTags, namerGapMs: 0 });
+  const svc = createService({ dir, config, download, search: async () => found, log: () => {}, retryMs: 5, find, writeTags, namerGapMs: 0 });
   await new Promise((r) => svc.server.listen(0, r));
   t.after(() => { svc.server.close(); fs.rmSync(dir, { recursive: true, force: true }); });
   const base = `http://127.0.0.1:${svc.server.address().port}`;
@@ -97,6 +97,29 @@ test('a song with no source the PC can use asks for the file straight away', asy
   assert.strictEqual(calls.length, 0);
   assert.strictEqual((await api('/ingest', { method: 'POST', body: { platform: 'local', id: 'x1' } })).body.needFile, true);
   assert.ok(body.id);
+});
+
+test('a song the PC cannot get from its own service is downloaded from the same song on YouTube', async (t) => {
+  const yandex = { platform: 'yandex', id: 'ym1', url: 'https://music.yandex.ru/track/1', title: 'Song', artist: 'Lida', duration: 180, reason: 'liked' };
+  const { api, settle, calls } = await start(t, { fails: (u) => u.includes('yandex'), found: { id: 'yt9', url: 'https://www.youtube.com/watch?v=yt9' } });
+  await api('/ingest', { method: 'POST', body: yandex });
+  await settle();
+  assert.deepStrictEqual(calls, ['https://music.yandex.ru/track/1', 'https://www.youtube.com/watch?v=yt9']);
+  const [one] = (await api('/catalog')).body.songs;
+  assert.strictEqual(one.ready, true);
+  assert.deepStrictEqual(one.sources, ['yandex:ym1', 'youtube:yt9']);
+});
+
+test('a song found on YouTube that the library already has becomes one song', async (t) => {
+  const { api, settle } = await start(t, { fails: (u) => u.includes('yandex'), found: { id: 'abc123', url: 'https://www.youtube.com/watch?v=abc123' } });
+  await api('/ingest', { method: 'POST', body: song });
+  await settle();
+  await api('/ingest', { method: 'POST', body: { platform: 'yandex', id: 'ym2', url: 'https://music.yandex.ru/track/2', title: 'Song', artist: 'Lida', duration: 180, reason: 'liked' } });
+  await settle();
+  const { songs } = (await api('/catalog')).body;
+  assert.strictEqual(songs.length, 1);
+  assert.deepStrictEqual(songs[0].sources.sort(), ['youtube:abc123', 'yandex:ym2'].sort());
+  assert.strictEqual((await api('/ingest', { method: 'POST', body: { platform: 'yandex', id: 'ym2' } })).body.status, 'ready');
 });
 
 test('the audio is served with Range support for seeking', async (t) => {

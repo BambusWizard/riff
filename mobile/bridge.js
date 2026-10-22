@@ -177,7 +177,13 @@ keepAlive.loop = true;
 keepAlive.src = silentWavUrl();
 window.__riffKeepAlive = {
   start() { keepAlive.play().catch(() => {}); },
-  stop() { keepAlive.pause(); },
+  // after() runs once the silent loop has really stopped: iOS then shows the lock screen as paused,
+  // so the app tells it again that the song is playing
+  stop(after) {
+    if (keepAlive.paused) return;
+    if (after) keepAlive.addEventListener('pause', () => { setTimeout(after, 50); setTimeout(after, 1000); }, { once: true });
+    keepAlive.pause();
+  },
 };
 // iOS only lets a media element start without a tap once a tap has started it
 document.addEventListener('touchend', () => { keepAlive.play().then(() => keepAlive.pause()).catch(() => {}); }, { once: true, capture: true });

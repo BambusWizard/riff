@@ -5255,7 +5255,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     el.nativeAudio.addEventListener('playing', () => {
-      if (window.__riffKeepAlive) window.__riffKeepAlive.stop();
+      if (window.__riffKeepAlive) {
+        window.__riffKeepAlive.stop(() => {
+          if (el.nativeAudio.paused || !('mediaSession' in navigator)) return;
+          navigator.mediaSession.playbackState = 'playing';
+          updateMediaPositionState();
+        });
+      }
       state.isPlaying = true;
       document.body.classList.add('is-playing');
       updatePlayPauseButton(true, false);

@@ -65,9 +65,10 @@ applyRowBadges();
   panel.addEventListener('touchstart', (e) => {
     const t = e.touches[0];
     const lyrics = document.getElementById('lyrics-container');
-    const cover = document.getElementById('cover-container');
-    const busy = (lyrics && lyrics.contains(e.target) && lyrics.scrollTop > 0) || (cover && cover.contains(e.target));
-    startY = busy ? null : t.clientY; // a scrolled lyrics list scrolls; the cover swipes sideways to skip
+    const busy = lyrics && lyrics.contains(e.target) && lyrics.scrollTop > 0;
+    // a scrolled lyrics list scrolls. On the cover the first movement decides: down drags the sheet,
+    // sideways is the cover's own skip swipe (that handler ignores vertical moves)
+    startY = busy ? null : t.clientY;
     startX = t.clientX; vertical = null; lastDy = 0;
   }, { passive: true });
   panel.addEventListener('touchmove', (e) => {

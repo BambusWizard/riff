@@ -51,13 +51,16 @@ applyRowBadges();
   // chasing it), and the app behind is shown while dragging (with the sheet open it is hidden to save work)
   let startX = null, startY = null, vertical = null, lastDy = 0;
   // body.np-settling (mobile.css) animates the release; while the finger moves nothing is animated
+  // --np-reveal (0..1): how far the sheet is pulled down; the app behind fades in with it
   const moveSheet = (dy, animate) => {
     document.body.classList.toggle('np-settling', animate);
     for (const n of [panel, playbar]) n.style.transform = dy ? `translateY(${dy}px)` : '';
+    document.body.style.setProperty('--np-reveal', String(Math.min(1, dy / (window.innerHeight * 0.6))));
   };
   const resetSheet = () => {
     document.body.classList.remove('np-settling', 'np-dragging');
     for (const n of [panel, playbar]) n.style.transform = '';
+    document.body.style.removeProperty('--np-reveal');
   };
   panel.addEventListener('touchstart', (e) => {
     const t = e.touches[0];

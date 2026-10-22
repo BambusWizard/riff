@@ -555,6 +555,15 @@ html.is-mobile body.np-open.np-dragging .main-content,
 html.is-mobile body.np-open.np-dragging .sidebar,
 html.is-mobile body.np-open.np-dragging .titlebar,
 html.is-mobile body.np-open.np-dragging .top-nav { visibility: visible !important; }
+/* ...fading in as the sheet goes down (--np-reveal is set by mobile-ui.js) */
+html.is-mobile body.np-open.np-dragging .main-content,
+html.is-mobile body.np-open.np-dragging .sidebar,
+html.is-mobile body.np-open.np-dragging .titlebar,
+html.is-mobile body.np-open.np-dragging .top-nav { opacity: var(--np-reveal, 0) !important; transition: none !important; }
+html.is-mobile body.np-open.np-settling .main-content,
+html.is-mobile body.np-open.np-settling .sidebar,
+html.is-mobile body.np-open.np-settling .titlebar,
+html.is-mobile body.np-open.np-settling .top-nav { transition: opacity .26s cubic-bezier(.2, .8, .2, 1) !important; }
 html.is-mobile body.np-dragging #right-panel { transition: none !important; }
 html.is-mobile body.np-settling #right-panel,
 html.is-mobile body.np-settling .playbar { transition: transform .26s cubic-bezier(.2, .8, .2, 1) !important; }

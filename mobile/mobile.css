@@ -21,7 +21,7 @@ html.is-mobile body { touch-action: manipulation; }
 /* ---------- top bar ---------- */
 html.is-mobile .titlebar {
   height: auto !important;
-  padding: calc(var(--safe-top) + 8px) 16px 8px !important;
+  padding: calc(var(--safe-top) + 6px) 16px 4px !important;
   -webkit-app-region: no-drag;
 }
 html.is-mobile .titlebar-controls,
@@ -32,7 +32,7 @@ html.is-mobile .top-nav {
   width: 100% !important;
   display: flex !important;
   gap: 8px !important;
-  margin: 8px 0 0 !important;
+  margin: 4px 0 0 !important;
   padding: 0 16px !important;
 }
 html.is-mobile .search-box-wrapper { flex: 1 1 auto !important; min-width: 0 !important; width: auto !important; max-width: none !important; }
@@ -76,15 +76,17 @@ html.is-mobile .app-layout {
   height: auto !important;
   max-height: none !important;
   position: fixed !important;
-  inset: calc(var(--safe-top) + 108px) 0 var(--chrome-bottom) 0 !important;
+  /* --top-h: the header's real bottom edge, measured by mobile-ui.js (it moves with the safe area, the text
+     size, and whether the search row is shown); the fallback is only for the first frame */
+  inset: var(--top-h, calc(var(--safe-top) + 92px)) 0 var(--chrome-bottom) 0 !important;
 }
 /* the global search lives on the home screen only; favourites, playlists etc. have their own search box,
-   and two search bars at once confuse (mobile-ui.js sets the class). The 50px are the search row + its margin */
+   and two search bars at once confuse (mobile-ui.js sets the class) */
 html.is-mobile body.off-home .top-nav { display: none !important; }
-html.is-mobile body.off-home .app-layout { top: calc(var(--safe-top) + 58px) !important; }
+html.is-mobile body.off-home .app-layout { top: var(--top-h, calc(var(--safe-top) + 46px)) !important; }
 html.is-mobile .main-content {
   border-radius: 0 !important;
-  padding: 12px 16px 24px !important;
+  padding: 6px 16px 24px !important;
   background: transparent !important;
   -webkit-overflow-scrolling: touch;
 }

@@ -411,9 +411,25 @@ applyRowBadges();
 (() => {
   const home = document.getElementById('view-discover');
   if (!home) return;
-  const sync = () => document.body.classList.toggle('off-home', !home.classList.contains('active'));
+  // the main area starts right under the header: its real bottom edge, search row or not
+  const bar = document.querySelector('.titlebar');
+  const nav = document.querySelector('.top-nav');
+  const measure = () => {
+    const last = nav && getComputedStyle(nav).display !== 'none' ? nav : bar;
+    if (last) document.documentElement.style.setProperty('--top-h', `${Math.round(last.getBoundingClientRect().bottom) + 6}px`);
+  };
+  const sync = () => { document.body.classList.toggle('off-home', !home.classList.contains('active')); measure(); };
   new MutationObserver(sync).observe(home, { attributes: true, attributeFilter: ['class'] });
+  if (window.ResizeObserver) [bar, nav].forEach((n) => n && new ResizeObserver(measure).observe(n));
+  window.addEventListener('resize', measure);
   sync();
+})();
+
+// the playlists sheet lives inside the tab bar in the page; inside that fixed, clipped bar iOS paints the
+// sheet and the bar's own background badly, so on phones it hangs off <body> (app.js finds it by id)
+(() => {
+  const drawer = document.getElementById('rail-drawer');
+  if (drawer) document.body.appendChild(drawer);
 })();
 
 // track rows on phones: title, one like button, and a little column - where the song comes from (top) and

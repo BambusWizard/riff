@@ -73,6 +73,14 @@ async function sync(req, env, user, origin) {
     try { data = JSON.parse(await req.text()).data; } catch (e) { return json({ error: 'bad body' }, 400); }
     if (!data || typeof data !== 'object') return json({ error: 'bad body' }, 400);
     const at = Date.now();
+    // every overwritten copy is kept for 30 days (backup:<user>:<its time>), so a phone that sends a wrong
+    // library can't destroy the old one for good. Restore: copy a backup's value back to library:<user>
+    const prev = await env.RIFF_DATA.get(key, 'text');
+    if (prev) {
+      let prevAt = 0;
+      try { prevAt = JSON.parse(prev).at || 0; } catch (e) {}
+      await env.RIFF_DATA.put(`backup:${user}:${prevAt || at}`, prev, { expirationTtl: 30 * 24 * 3600 });
+    }
     await env.RIFF_DATA.put(key, JSON.stringify({ data, at }));
     return json({ at });
   }

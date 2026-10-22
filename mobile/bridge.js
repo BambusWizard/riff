@@ -303,25 +303,58 @@ if (!Capacitor.isNativePlatform() && RIFF_PROXY_URL) {
   // library stored online, so they are only sent if there is nothing online yet
   let ready = false;
   let applying = false;
+  let pendingRemote = null;
   const changed = () => {
     if (!ready || applying) return;
     const m = readMeta();
     if (!m.dirty) writeMeta({ ...m, dirty: true });
+    // a newer online copy is still waiting to be applied (a song is playing): sending ours now would wipe it.
+    // The change stays marked and is merged into that copy when it is applied
+    if (pendingRemote) return;
     clearTimeout(pushTimer);
     pushTimer = setTimeout(push, 5000);
   };
   Storage.prototype.setItem = function (k, v) { rawSet.call(this, k, v); if (this === localStorage && synced(k)) changed(); };
   Storage.prototype.removeItem = function (k) { rawRemove.call(this, k); if (this === localStorage && synced(k)) changed(); };
 
-  let pendingRemote = null;
+  // Lists (likes, playlists, history...) are merged, not replaced, when both sides changed: a song liked on
+  // one phone and another on a second phone both stay. An item is the same item when its id (or url) matches;
+  // playlists with the same id get their songs merged. Deleting can lose against the other side; adding never does
+  const itemKey = (x) => (x && typeof x === 'object' ? String(x.id || x.url || JSON.stringify(x)) : JSON.stringify(x));
+  const mergeLists = (mine, theirs) => {
+    const out = [];
+    const at = new Map();
+    for (const x of [...mine, ...theirs]) {
+      const k = itemKey(x);
+      if (!at.has(k)) { at.set(k, out.length); out.push(x); continue; }
+      const prev = out[at.get(k)];
+      if (prev && x && Array.isArray(prev.tracks) && Array.isArray(x.tracks)) out[at.get(k)] = { ...prev, tracks: mergeLists(prev.tracks, x.tracks) };
+    }
+    return out;
+  };
+  const mergeValue = (mine, theirs) => {
+    try {
+      const a = JSON.parse(mine);
+      const b = JSON.parse(theirs);
+      if (Array.isArray(a) && Array.isArray(b)) return JSON.stringify(mergeLists(a, b));
+    } catch (e) {}
+    return theirs; // plain settings: the online value
+  };
+
   const applyRemote = () => {
     if (!pendingRemote || audioBusy()) return; // never cut a song off; retried on the next pause
     const { data, at } = pendingRemote;
     pendingRemote = null;
     applying = true;
-    for (const k of Object.keys(snapshot())) if (!(k in data)) rawRemove.call(localStorage, k);
-    for (const [k, v] of Object.entries(data)) if (synced(k)) rawSet.call(localStorage, k, v);
-    writeMeta({ at, dirty: false });
+    const local = snapshot();
+    const dirty = readMeta().dirty; // changes made here that the online copy doesn't have yet
+    for (const k of Object.keys(local)) if (!(k in data) && !dirty) rawRemove.call(localStorage, k);
+    for (const [k, v] of Object.entries(data)) {
+      if (!synced(k)) continue;
+      rawSet.call(localStorage, k, dirty && k in local ? mergeValue(local[k], v) : v);
+    }
+    // still dirty if we merged in our own changes: the reload's syncPull then sends the merged library
+    writeMeta({ at, dirty });
     location.reload(); // app.js holds the old library in memory
   };
 
@@ -337,8 +370,9 @@ if (!Capacitor.isNativePlatform() && RIFF_PROXY_URL) {
     const m = readMeta();
     ready = true;
     const empty = !remote.data || !Object.keys(remote.data).length;
-    // nothing online yet, or local changes not sent: this device's copy wins (last change wins)
-    if (empty || m.dirty) { push(); return; }
+    // nothing online yet, or only we changed since our last sync: send ours
+    if (empty || (m.dirty && remote.at === m.at)) { push(); return; }
+    // someone else changed it (another phone, or this is a fresh install): take theirs, merged with ours
     if (remote.at !== m.at) { pendingRemote = remote; applyRemote(); }
   };
 
@@ -372,6 +406,19 @@ if (!Capacitor.isNativePlatform()) {
     tag.textContent = `${RIFF_CHANNEL === 'nightly' ? 'nightly' : 'build'} ${RIFF_VERSION}`;
     logo.appendChild(tag);
   }
+  // Home Screen app with the translucent status bar: iOS can make the page shorter than the screen by the status
+  // bar's height. body (styles.css: absolute, contain: strict) is what the tab bar and mini player sit on, so
+  // they float above an empty strip. The page is sized to the screen instead (mobile.css: --app-h on <html>)
+  const fitScreen = () => {
+    if (!navigator.standalone) return;
+    const portrait = matchMedia('(orientation: portrait)').matches;
+    const h = portrait ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
+    document.documentElement.style.setProperty('--app-h', `${Math.max(h, window.innerHeight)}px`);
+  };
+  fitScreen();
+  window.addEventListener('resize', fitScreen);
+  window.addEventListener('load', () => riffLog('info', `layout: inner ${window.innerWidth}x${window.innerHeight}, screen ${screen.width}x${screen.height}, `
+    + `body ${Math.round(document.body.getBoundingClientRect().height)}, standalone ${!!navigator.standalone}, app-h ${document.documentElement.style.getPropertyValue('--app-h') || '-'}`));
   // sw.js keeps this build's files on the phone, so the Home Screen app also opens without internet
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch((e) => console.warn('[sw]', e.message));
   const TRIED = 'riff_update_tried';

@@ -18,6 +18,12 @@
   };
 })();
 
+// track rows: source + downloaded icons, can be switched off in Settings -> Storage
+const ROW_BADGES = 'riff_row_badges';
+const rowBadgesOn = () => { try { return localStorage.getItem(ROW_BADGES) !== '0'; } catch (e) { return true; } };
+const applyRowBadges = () => document.body.classList.toggle('no-row-badges', !rowBadgesOn());
+applyRowBadges();
+
 (() => {
   const panel = document.getElementById('right-panel');
   const playbar = document.getElementById('playbar');
@@ -236,7 +242,24 @@
       const res = await window.electronAPI.shareText('Riff error log', window.RiffLog ? window.RiffLog.text() : 'no log');
       if (res === 'copied' && window.RiffCore) window.RiffCore.toast('Log copied to clipboard', 'info');
     });
-    storageGroup.append(limitRow, logRow);
+    const badgesRow = document.createElement('div');
+    badgesRow.className = 'setting-item';
+    badgesRow.innerHTML = `
+      <div class="setting-item-top" style="align-items: center;">
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <span class="setting-name">Source and download icons</span>
+          <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Next to each song in lists: where it comes from and whether it is on this phone.</span>
+        </div>
+        <button class="effect-switch-btn${rowBadgesOn() ? ' active' : ''}" type="button"><span class="thumb"></span></button>
+      </div>`;
+    const badgesSwitch = badgesRow.querySelector('button');
+    badgesSwitch.addEventListener('click', () => {
+      const on = !rowBadgesOn();
+      try { localStorage.setItem(ROW_BADGES, on ? '1' : '0'); } catch (e) {}
+      badgesSwitch.classList.toggle('active', on);
+      applyRowBadges();
+    });
+    storageGroup.append(limitRow, badgesRow, logRow);
   }
 
   // artist bio is clamped to 3 lines on phones; tapping it expands / collapses
@@ -281,4 +304,78 @@
   const sync = () => document.body.classList.toggle('off-home', !home.classList.contains('active'));
   new MutationObserver(sync).observe(home, { attributes: true, attributeFilter: ['class'] });
   sync();
+})();
+
+// track rows on phones: title, one like button, and a little column - where the song comes from (top) and
+// whether it is downloaded to this phone (bottom). app.js calls this for every row it builds
+(() => {
+  const icon = (id) => { const s = document.querySelector(`#${id} svg`); return s ? s.outerHTML : ''; };
+  const SOURCES = {
+    youtube: ['YouTube', icon('platform-yt')],
+    ytmusic: ['YouTube Music', icon('platform-ytm')],
+    soundcloud: ['SoundCloud', icon('platform-sc')],
+    yandex: ['Yandex Music', icon('platform-ym')],
+    local: ['My files', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>'],
+  };
+  const ON_PHONE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg>';
+  const ONLINE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 1 0-1.4-8.8A6 6 0 0 0 4.5 12.5 3.5 3.5 0 0 0 6.5 19z"/></svg>';
+  window.RiffDecorateRow = (row, track) => {
+    const p = SOURCES[track.platform] ? track.platform : 'youtube';
+    const down = p === 'local' || (window.RiffIsDownloaded ? window.RiffIsDownloaded(track.id) : false);
+    const col = document.createElement('div');
+    col.className = 'track-row-badges';
+    col.innerHTML = `<span class="trb-src" title="${SOURCES[p][0]}">${SOURCES[p][1]}</span>`
+      + `<span class="trb-dl${down ? ' on' : ''}" title="${down ? 'On this phone' : 'Streams from the internet'}">${down ? ON_PHONE : ONLINE}</span>`;
+    row.appendChild(col);
+  };
+})();
+
+// the row's other actions (add to playlist, download, remove) are a long press away, so a row only shows the like
+(() => {
+  const ACTIONS = [
+    ['.btn-row-add-playlist', 'Add to playlist'],
+    ['.btn-row-more', 'Download & options'],
+    ['.btn-row-remove-playlist', 'Remove from playlist'],
+    ['.btn-row-remove-local', 'Remove from library'],
+  ];
+  let sheet = null;
+  const close = () => { if (sheet) { sheet.remove(); sheet = null; } };
+  const open = (row) => {
+    const items = ACTIONS.filter(([sel]) => row.querySelector(sel));
+    if (!items.length) return;
+    close();
+    sheet = document.createElement('div');
+    sheet.className = 'row-sheet';
+    sheet.innerHTML = '<div class="row-sheet-card"><div class="row-sheet-title"></div><div class="row-sheet-artist"></div>'
+      + items.map(([, label], i) => `<button type="button" data-i="${i}">${label}</button>`).join('') + '</div>';
+    sheet.querySelector('.row-sheet-title').textContent = row.dataset.trackTitle || '';
+    sheet.querySelector('.row-sheet-artist').textContent = row.dataset.trackArtist || '';
+    sheet.addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-i]');
+      if (b) { const real = row.querySelector(items[b.dataset.i][0]); close(); if (real) real.click(); }
+      else if (!e.target.closest('.row-sheet-card')) close();
+    });
+    document.body.appendChild(sheet);
+    if (navigator.vibrate) navigator.vibrate(15);
+  };
+
+  let timer = null, x0 = 0, y0 = 0, fired = 0;
+  const cancel = () => { clearTimeout(timer); timer = null; };
+  document.addEventListener('touchstart', (e) => {
+    const row = e.target.closest('.track-row');
+    if (!row || e.target.closest('button')) return;
+    x0 = e.touches[0].clientX; y0 = e.touches[0].clientY;
+    cancel();
+    timer = setTimeout(() => { timer = null; fired = Date.now(); open(row); }, 480);
+  }, { passive: true });
+  document.addEventListener('touchmove', (e) => {
+    if (timer && Math.hypot(e.touches[0].clientX - x0, e.touches[0].clientY - y0) > 10) cancel();
+  }, { passive: true });
+  document.addEventListener('touchend', cancel, { passive: true });
+  document.addEventListener('touchcancel', cancel, { passive: true });
+  // the finger lifting after a long press must not also start the song
+  document.addEventListener('click', (e) => {
+    if (Date.now() - fired < 700 && e.target.closest('.track-row')) { e.stopPropagation(); e.preventDefault(); }
+  }, true);
+  document.addEventListener('contextmenu', (e) => { if (e.target.closest('.track-row')) e.preventDefault(); });
 })();

@@ -480,3 +480,45 @@ html.is-mobile #album-hero-fx,
 html.is-mobile .ambient-img-layer { will-change: transform; }
 html.is-mobile .logo-build { font-size: 11px; color: var(--md-sys-color-outline); font-variant-numeric: tabular-nums; }
 html.is-mobile .playbar-left { will-change: transform; }
+
+/* ---------- track rows: title, one like, source + downloaded column ---------- */
+html.is-mobile .track-row .btn-row-add-playlist,
+html.is-mobile .track-row .btn-row-more,
+html.is-mobile .track-row .btn-row-remove-playlist,
+html.is-mobile .track-row .btn-row-remove-local { display: none !important; }
+html.is-mobile .track-row-info { flex: 1 1 auto !important; min-width: 0 !important; }
+html.is-mobile .track-row-title, html.is-mobile .track-row-artist { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.is-mobile .track-row .track-row-actions { flex: 0 0 auto !important; gap: 0 !important; margin: 0 !important; }
+html.is-mobile .track-row .btn-row-fav { width: 36px !important; height: 36px !important; background: none !important; }
+/* a finger passing over a row while scrolling doesn't light it up (iOS fires :hover/:active on touch) */
+html.is-mobile .track-row { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+html.is-mobile .track-row:not(.playing):hover,
+html.is-mobile .track-row:not(.playing):active { background: transparent !important; }
+html.is-mobile .track-row:active { transform: none !important; }
+html.is-mobile .track-row-badges {
+  flex: 0 0 16px; display: flex; flex-direction: column; align-items: center; gap: 7px;
+  color: var(--md-sys-color-outline);
+}
+html.is-mobile .track-row-badges svg { width: 14px; height: 14px; display: block; }
+html.is-mobile .trb-dl.on { color: var(--md-sys-color-primary); }
+html.is-mobile body.no-row-badges .track-row-badges { display: none; }
+
+/* long-press menu of a track row */
+html.is-mobile .row-sheet {
+  position: fixed; inset: 0; z-index: 7000; display: flex; align-items: flex-end;
+  background: rgba(0, 0, 0, 0.45); animation: row-sheet-fade .15s ease;
+}
+html.is-mobile .row-sheet-card {
+  width: 100%; padding: 16px 12px calc(var(--safe-bottom) + 12px); border-radius: 22px 22px 0 0;
+  background: var(--md-sys-color-surface-container-high-solid, #2B2D31);
+  animation: row-sheet-up .22s cubic-bezier(.2, 0, 0, 1);
+}
+html.is-mobile .row-sheet-title { padding: 0 8px; font-size: 16px; font-weight: 600; color: var(--md-sys-color-on-surface); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.is-mobile .row-sheet-artist { padding: 2px 8px 10px; font-size: 13px; color: var(--md-sys-color-outline); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.is-mobile .row-sheet-card button {
+  display: block; width: 100%; text-align: left; padding: 14px 8px; border: 0; border-radius: 12px;
+  background: none; color: var(--md-sys-color-on-surface); font-size: 15px;
+}
+html.is-mobile .row-sheet-card button:active { background: var(--md-sys-color-surface-container-highest); }
+@keyframes row-sheet-fade { from { opacity: 0; } }
+@keyframes row-sheet-up { from { transform: translateY(100%); } }

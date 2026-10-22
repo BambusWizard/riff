@@ -247,6 +247,18 @@ if (Capacitor.getPlatform() === 'android') {
 
 ready = start();
 window.electronAPI = electronAPI({ ready, port: PORT, fs, fileUrlFor });
+
+// is a song downloaded? For the badge in track rows (mobile-ui.js). The fs index lives in memory, so this is
+// cheap; the set is rebuilt at most every two seconds, so a long list doesn't read the folder once per row
+let downloaded = null;
+let downloadedAt = 0;
+window.RiffIsDownloaded = (id) => {
+  if (!downloaded || Date.now() - downloadedAt > 2000) {
+    try { downloaded = new Set(fs.readdirSync('/data/tracks').filter((n) => !n.includes('.temp.')).map((n) => n.replace(/\.[^.]+$/, ''))); } catch (e) { downloaded = new Set(); }
+    downloadedAt = Date.now();
+  }
+  return downloaded.has(String(id || '').replace(/[^a-zA-Z0-9_-]/g, '_')); // server.js cleanTrackId
+};
 document.documentElement.classList.add('is-mobile');
 
 const audioBusy = () => [...document.querySelectorAll('audio')].some((a) => !a.paused);

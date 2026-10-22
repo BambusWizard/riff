@@ -6313,6 +6313,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           });
         }
         
+        if (window.RiffDecorateRow) window.RiffDecorateRow(row, track); // phone layout: source + downloaded badges
       return row;
   }
 

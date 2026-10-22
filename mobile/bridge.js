@@ -136,6 +136,9 @@ async function resolveLocalUrl(u) {
 window.fetch = async (input, init = {}) => {
   const url = typeof input === 'string' ? input : input && input.url;
   if (!url || !url.startsWith(BASE)) return pageFetch(input, init);
+  // a song the phone hasn't got but the song library on the PC has: played from there (library-sync.js)
+  const fromLibrary = window.RiffLibrary && window.RiffLibrary.streamFor(url);
+  if (fromLibrary) return fromLibrary;
   let r = await call(url, init);
   // loading a song can fail on a passing YouTube/network hiccup; one quiet retry fixes most of them
   if (r.status >= 500 && url.includes('/api/stream-info')) {
@@ -144,7 +147,8 @@ window.fetch = async (input, init = {}) => {
     r = await call(url, init);
   }
   if (r.file) return pageFetch(await fileUrlFor(r.file));
-  return new Response(r.status === 204 ? null : r.body, { status: r.status, headers: r.headers });
+  const body = window.RiffLibrary && r.status === 200 ? window.RiffLibrary.searchResults(url, r.body) : r.body;
+  return new Response(r.status === 204 ? null : body, { status: r.status, headers: r.headers });
 };
 
 // <audio src> and <img src> pointing at the local server get swapped for real file URLs.
@@ -339,6 +343,7 @@ window.electronAPI = electronAPI({ ready, port: PORT, fs, fileUrlFor });
 
 // the song library on the PC (library/service.js): songs played to the end or liked go there (library-sync.js)
 if (!Capacitor.isNativePlatform()) {
+  require('./library-sync').applyNames(); // before app.js reads likes, history and playlists
   ready.then(() => {
     window.RiffLibrary = require('./library-sync')({ fs, pageFetch, proxyUrl: RIFF_PROXY_URL, accessKey: storedKey, fileUrlFor, log: (m) => riffLog('info', m) });
   });
@@ -378,7 +383,7 @@ const audioBusy = () => [...document.querySelectorAll('audio')].some((a) => !a.p
 // ---- web build: library sync. Likes, playlists, history and settings follow the personal key ----
 // It is everything app.js keeps under devsize_* / riff_* in localStorage, minus what belongs to one device.
 const SYNC_META = 'riff_sync_meta'; // { at: server time of the copy we hold, dirty: changes not sent yet }
-const DEVICE_ONLY = /^(riff_proxy_key|riff_sync_meta|riff_debug_log|riff_bg_url|riff_bg_vpath|riff_banner_media|riff_cache_limit_mb|riff_right_panel_width|riff_queue_state|riff_volume|riff_muted|riff_settings_cat|riff_home_pane|riff_search_pos|riff_font_scale|riff_perf_mode|riff_library_queue|riff_library_url|riff_library_key|devsize_ui_scale)$/;
+const DEVICE_ONLY = /^(riff_proxy_key|riff_sync_meta|riff_debug_log|riff_bg_url|riff_bg_vpath|riff_banner_media|riff_cache_limit_mb|riff_right_panel_width|riff_queue_state|riff_volume|riff_muted|riff_settings_cat|riff_home_pane|riff_search_pos|riff_font_scale|riff_perf_mode|riff_library_queue|riff_library_names|riff_library_url|riff_library_key|devsize_ui_scale)$/;
 const synced = (k) => /^(devsize_|riff_)/.test(k) && !DEVICE_ONLY.test(k);
 let syncPull = null;
 if (!Capacitor.isNativePlatform() && RIFF_PROXY_URL) {

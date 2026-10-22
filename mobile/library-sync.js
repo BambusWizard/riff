@@ -7,9 +7,43 @@
 // for development riff_library_url / riff_library_key in localStorage point straight at a service.
 
 const QUEUE = 'riff_library_queue'; // device only (bridge.js DEVICE_ONLY)
+const NAMES = 'riff_library_names'; // device only: our names for the songs the library knows, by "platform:id"
 const CATALOG = '/data/library/catalog.json';
 const TRACKS = '/data/tracks';
 const MAX_AGE = 60 * 24 * 3600 * 1000; // a song nobody can get to the PC is dropped from the queue after 60 days
+const LISTS = ['devsize_favorites', 'devsize_history', 'devsize_playlists'];
+
+// Songs in likes, history and playlists carry the library's names and cover instead of the upload's ("Lida - Song"
+// by "minecrafter" becomes "Song" by "Lida"). bridge.js runs this at start, before app.js reads the lists; a
+// renamed list is saved like any other change, so the sync takes it along
+function renameTrack(t, names) {
+  const n = t && names[`${t.platform}:${t.id}`];
+  if (!n) return false;
+  let changed = false;
+  for (const [k, v] of [['title', n.title], ['artist', n.artist], ['thumbnail', n.cover]]) {
+    if (v && t[k] !== v) { t[k] = v; changed = true; }
+  }
+  return changed;
+}
+function applyNames() {
+  let names;
+  try { names = JSON.parse(localStorage.getItem(NAMES) || '{}'); } catch (e) { return; }
+  if (!Object.keys(names).length) return;
+  for (const key of LISTS) {
+    let list;
+    try { list = JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) { continue; }
+    if (!Array.isArray(list)) continue;
+    let changed = false;
+    for (const x of list) {
+      if (x && Array.isArray(x.tracks)) { for (const t of x.tracks) changed = renameTrack(t, names) || changed; } // a playlist
+      else changed = renameTrack(x, names) || changed;
+    }
+    if (changed) localStorage.setItem(key, JSON.stringify(list));
+  }
+}
+
+// a search's words in a song's names (any order, no case, accents or punctuation)
+const words = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/ё/g, 'е').split(/[^\p{L}\p{N}]+/u).filter(Boolean);
 
 module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, fileUrlFor, log }) {
   const cleanId = (id) => String(id || '').replace(/[^a-zA-Z0-9_-]/g, '_'); // server.js cleanTrackId
@@ -101,6 +135,24 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
     await call(pc, `/songs/${songId}/file?ext=${encodeURIComponent(ext)}`, { method: 'PUT', body: blob }, 120000);
   };
 
+  // ---- the catalog: our names, and which songs the PC can play ----
+  let bySource = new Map();
+  let lastPc = null; // the PC as of the last successful sync
+  const useCatalog = (c) => {
+    bySource = new Map();
+    const names = {};
+    for (const song of c.songs) {
+      for (const k of song.sources) {
+        bySource.set(k, song);
+        if (song.named) names[k] = { title: song.title, artist: song.artist, cover: song.cover };
+      }
+    }
+    status.songs = c.songs.length;
+    const json = JSON.stringify(names);
+    if (localStorage.getItem(NAMES) !== json) { localStorage.setItem(NAMES, json); applyNames(); }
+  };
+  const pcOnline = () => lastPc && status.state === 'online' && Date.now() - status.at < 5 * 60 * 1000;
+
   let running = false;
   const run = async () => {
     if (running || document.hidden) return;
@@ -127,7 +179,9 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
       const catalog = await call(pc, '/catalog', {}, 30000);
       fs.mkdirSync('/data/library', { recursive: true });
       fs.writeFileSync(CATALOG, JSON.stringify(catalog));
-      Object.assign(status, { state: 'online', songs: catalog.songs.length, at: Date.now(), error: '' });
+      useCatalog(catalog);
+      lastPc = pc;
+      Object.assign(status, { state: 'online', at: Date.now(), error: '' });
     } catch (e) {
       status.state = 'offline';
       status.error = e.message;
@@ -144,12 +198,55 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
   setInterval(run, 3 * 60 * 1000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) soon(); });
 
-  try {
-    const c = JSON.parse(fs.readFileSync(CATALOG, 'utf8'));
-    status.songs = c.songs.length;
-  } catch (e) {}
+  try { useCatalog(JSON.parse(fs.readFileSync(CATALOG, 'utf8'))); } catch (e) {}
+
+  // ---- playing: the phone's own copy first, then the PC's, then the service (bridge.js asks before stream-info) ----
+  const streamFor = (url) => {
+    if (!url.includes('/api/stream-info') || !pcOnline()) return null;
+    const q = new URL(url).searchParams;
+    const song = bySource.get(`${q.get('platform') || 'youtube'}:${q.get('id')}`);
+    if (!song || !song.ready || localFile({ id: q.get('id') })) return null;
+    log(`library: playing ${song.artist} - ${song.title} from the PC`);
+    const body = JSON.stringify({ success: true, isLocal: false, streamUrl: `${lastPc.url}/songs/${song.id}/file?k=${encodeURIComponent(lastPc.key)}` });
+    return new Response(body, { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+
+  // ---- searching: songs the library knows get its names, and library songs that match come first ----
+  const asTrack = (song) => {
+    const [platform, id] = song.sources[0].split(/:(.*)/);
+    return {
+      id, platform, url: song.url || (platform === 'youtube' ? `https://www.youtube.com/watch?v=${id}` : ''),
+      title: song.title, artist: song.artist, duration: song.duration, thumbnail: song.cover, inLibrary: true,
+    };
+  };
+  const searchResults = (url, body) => {
+    if (!url.includes('/api/search') || !bySource.size) return body;
+    let data;
+    try { data = JSON.parse(body); } catch (e) { return body; }
+    if (!data || !data.success || !Array.isArray(data.tracks)) return body;
+    const names = {};
+    for (const [k, song] of bySource) if (song.named) names[k] = { title: song.title, artist: song.artist, cover: song.cover };
+    for (const t of data.tracks) { renameTrack(t, names); if (bySource.has(keyOf(t))) t.inLibrary = true; }
+    const q = new URL(url).searchParams;
+    if (Number(q.get('limit')) >= 20) { // the search screen, not the app's own one-song lookups
+      const want = words(q.get('q'));
+      const shown = new Set(data.tracks.map(keyOf));
+      const seen = new Set();
+      const hits = [];
+      for (const song of bySource.values()) {
+        if (seen.has(song.id)) continue;
+        seen.add(song.id);
+        const have = new Set(words(`${song.artist} ${song.title} ${song.album}`));
+        if (want.length && want.every((w) => [...have].some((h) => h.startsWith(w))) && !song.sources.some((k) => shown.has(k))) hits.push(asTrack(song));
+      }
+      data.tracks = [...hits.slice(0, 5), ...data.tracks];
+    }
+    return JSON.stringify(data);
+  };
 
   return {
+    streamFor,
+    searchResults,
     status: () => ({ ...status }),
     run,
     // cleanIds of songs whose files must stay until the PC has them (cache-limit.js)
@@ -157,3 +254,4 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
     catalog: () => { try { return JSON.parse(fs.readFileSync(CATALOG, 'utf8')); } catch (e) { return null; } },
   };
 };
+module.exports.applyNames = applyNames;

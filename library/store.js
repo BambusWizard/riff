@@ -165,13 +165,13 @@ class Store {
 
   usedBytes() { return this.songs.reduce((n, s) => n + (s.file ? s.file.size : 0), 0); }
 
-  // what phones keep a copy of: metadata only (no download bookkeeping, no URLs)
+  // what phones keep a copy of: metadata only (no download bookkeeping), and the first source's page to play it from
   catalog() {
     return {
       rev: this.rev,
       songs: this.songs.map((s) => ({
         id: s.id, title: s.title, artist: s.artist, album: s.album, year: s.year, cover: s.cover, duration: s.duration,
-        sources: s.sources, ready: s.status === 'ready', named: !!s.match && ['auto', 'confirmed'].includes(s.match.status),
+        sources: s.sources, url: s.urls[s.sources[0]] || '', ready: s.status === 'ready', named: !!s.match && ['auto', 'confirmed'].includes(s.match.status),
       })),
     };
   }

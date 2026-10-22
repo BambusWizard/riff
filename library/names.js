@@ -77,4 +77,20 @@ function artistSimilarity(x, y) {
   return best;
 }
 
-module.exports = { cleanTitle, cleanArtist, parseName, normalize, similarity, artistSimilarity };
+// Versions of one song: "Song (без цензуры)", "Song (Piano)", "Song - Live" and "Song" share a base title. Returns
+// the base (normalized, for comparing) and what tells this version apart ("" for the song itself)
+const VERSION = /^(без\s*цензуры|без\s*мата|uncensored|clean|explicit|piano( version)?|acoustic( version)?|live( version| at .+| in .+)?|instrumental|karaoke|a ?cappella|radio edit|extended( mix| version)?|sped up|speed up|slowed( down)?( (\+|and|&) reverb(ed)?)?|reverb|nightcore|demo|bass boosted|8d( audio)?|remaster(ed)?( \d{4})?|(\d{4} )?remaster(ed)?|.+ remix|remix|.+ version|.+ edit|.+ mix|cover|оригинал|акустика|акустическая версия|живое выступление|лайв|ремикс|.+ ремикс|ускоренная|замедленная)$/i;
+function versionOf(title) {
+  const labels = [];
+  let t = cleanTitle(title).replace(/[(\[]\s*(feat|ft|prod)\b[^)\]]*[)\]]/gi, ' ');
+  t = t.replace(/[(\[]([^)\]]*)[)\]]/g, (all, inner) => (VERSION.test(inner.trim()) ? (labels.push(inner.trim()), ' ') : all));
+  t = t.replace(/\s+[-–—]\s+([^-–—]+)$/, (all, tail) => (VERSION.test(tail.trim()) ? (labels.push(tail.trim()), '') : all));
+  return { base: normalize(t), version: labels.join(' · ') };
+}
+
+// the artists of a song, whatever their order: "DEAD BLONDE & GSPD" and "GSPD, DEAD BLONDE" are the same
+function artistKey(artist) {
+  return String(artist || '').replace(/\s*\b(feat|ft|featuring)\b\.?\s.*$/i, '').split(/\s*(?:,|&|\band\b|\bx\b|(?<!\p{L})и(?!\p{L})|\bfeat\.?|\bft\.?)\s*/iu).map(normalize).filter(Boolean).sort().join('+');
+}
+
+module.exports = { cleanTitle, cleanArtist, parseName, normalize, similarity, artistSimilarity, versionOf, artistKey };

@@ -6154,6 +6154,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       row.dataset.canonicalId = canonicalId;
       row.dataset.trackIndex = String(idx);
       row.dataset.trackId = track.id || '';
+      row.dataset.trackPlatform = track.platform || '';
       row.dataset.trackTitle = track.title || '';
       row.dataset.trackArtist = track.artist || '';
 
@@ -6186,7 +6187,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       <span class="track-row-index">${(isAlbum && track.no) ? track.no : (idx + 1)}</span>
       ${!isAlbum ? `<img class="track-row-thumb" src="${escapeHtml(rowThumb || '')}" alt="" onerror="this.style.visibility='hidden'">` : ''}
       <div class="track-row-info">
-      <span class="track-row-title">${escapeHtml(track.title || 'untitled')}</span>
+      <span class="track-row-title">${escapeHtml(track.title || 'untitled')}${track.versionCount > 1 ? ` <span class="track-row-versions">${track.versionCount} versions</span>` : ''}</span>
       ${showArtist ? `<span class="track-row-artist" title="view artist profile">${escapeHtml(track.artist || 'unknown artist')}</span>` : ''}
       </div>
       <span class="track-row-duration">${formatDuration(track.duration)}</span>
@@ -15609,6 +15610,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     next: () => playNext(),
     prev: () => playPrev(true),
     openArtist: (name) => openArtistProfile(name),
+    play: (track) => playTrack(track, [track], 0, null),
   };
   window.dispatchEvent(new Event('riff:ready'));
 

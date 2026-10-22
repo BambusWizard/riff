@@ -273,3 +273,27 @@ test('the library page opens only on the PC itself', async (t) => {
   const viaTunnel = await fetch(`${base}/ui`, { headers: { 'cf-connecting-ip': '1.2.3.4' } });
   assert.strictEqual(viaTunnel.status, 403);
 });
+
+test('versions of a song form one group; by hand a song joins another or stands alone', async (t) => {
+  const { api, settle } = await start(t);
+  const add = async (id, title, artist = 'МУККА') => (await api('/ingest', { method: 'POST', body: { platform: 'youtube', id, title, artist, duration: 157, reason: 'liked' } })).body.id;
+  const plain = await add('v1', 'Девочка с каре');
+  const raw = await add('v2', 'Девочка с каре (без цензуры)');
+  const piano = await add('v3', 'Девочка с каре (Piano)');
+  const other = await add('v4', 'Другая песня');
+  const cover = await add('v5', 'Девочка с каре', 'Someone Else');
+  await settle();
+  const groups = async () => Object.fromEntries((await api('/catalog')).body.songs.map((s) => [s.id, [s.group, s.version]]));
+  let g = await groups();
+  assert.deepStrictEqual(g[raw], [plain, 'без цензуры']);
+  assert.strictEqual(g[piano][0], plain);
+  assert.strictEqual(g[other][0], other);
+  assert.strictEqual(g[cover][0], cover); // another artist's song of that name is another song
+  await api(`/songs/${piano}/group`, { method: 'POST', body: { with: null } });
+  await api(`/songs/${other}/group`, { method: 'POST', body: { with: raw } });
+  g = await groups();
+  assert.strictEqual(g[piano][0], piano);
+  assert.strictEqual(g[other][0], plain);
+  await api(`/songs/${piano}/group`, { method: 'POST', body: { with: 'auto' } });
+  assert.strictEqual((await groups())[piano][0], plain);
+});

@@ -38,6 +38,7 @@
   .guess .names small { white-space: normal; }
   form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr)); gap: 8px; }
   label { display: grid; gap: 3px; font-size: 12px; color: var(--dim); }
+  select { min-width: 0; width: 100%; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; }
   input { min-width: 0; width: 100%; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; }
   audio { width: 100%; height: 36px; }
   .empty { color: var(--dim); text-align: center; padding: 48px 0; }
@@ -75,7 +76,9 @@ const durOf = (d) => (d ? `${Math.floor(d / 60)}:${String(Math.round(d % 60)).pa
 
 function songHtml(s) {
   const orig = s.original && (s.original.title !== s.title || s.original.artist !== s.artist) ? `was: ${esc(s.original.artist)} - ${esc(s.original.title)}` : '';
-  const meta = [s.album, s.year, durOf(s.duration)].filter(Boolean).map(esc).join(' · ');
+  const group = songs.filter((x) => x.group === s.group);
+  const meta = [s.version ? `version: ${s.version}` : '', group.length > 1 ? `${group.length} versions` : '', s.album, s.year, durOf(s.duration)].filter(Boolean).map(esc).join(' · ');
+  const sameArtist = songs.filter((x) => x.id !== s.id && x.group !== s.group && x.artist.toLowerCase() === s.artist.toLowerCase());
   const guesses = ((s.match && s.match.candidates) || []).map((c, i) => `
     <div class="guess">
       <img src="${esc(c.cover)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
@@ -101,6 +104,13 @@ function songHtml(s) {
         <label>Year<input name="year" value="${esc(s.year)}"></label>
         <label style="grid-column: 1 / -1">Cover URL<input name="cover" value="${esc(s.cover)}"></label>
       </form>
+      <label>Versions: ${group.length > 1 ? esc(group.filter((x) => x.id !== s.id).map((x) => `${x.title}`).join(', ')) : 'none'}
+        <select data-act="group">
+          <option value="">Change…</option>
+          ${group.length > 1 ? '<option value="null">Not a version of these: a song of its own</option>' : ''}
+          ${s.groupWith ? '<option value="auto">Group by name again</option>' : ''}
+          ${sameArtist.map((x) => `<option value="${x.id}">A version of: ${esc(x.title)}</option>`).join('')}
+        </select></label>
       <div class="actions" style="justify-content:flex-start">
         <button class="btn primary" data-act="save">Save these names</button>
         <button class="btn" data-act="search">Search with these words</button>
@@ -137,6 +147,15 @@ document.querySelector('.tabs').addEventListener('click', (e) => {
   render();
 });
 document.getElementById('q').addEventListener('input', render);
+document.getElementById('list').addEventListener('change', async (e) => {
+  const sel = e.target.closest('select[data-act="group"]');
+  if (!sel || !sel.value) return;
+  const id = sel.closest('.song').dataset.id;
+  try {
+    await api(`/songs/${id}/group`, { method: 'POST', body: JSON.stringify({ with: sel.value === 'null' ? null : sel.value }) });
+    await load();
+  } catch (err) { alert(err.message); }
+});
 document.getElementById('list').addEventListener('click', async (e) => {
   const b = e.target.closest('button[data-act]');
   if (!b) return;

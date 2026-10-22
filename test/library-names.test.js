@@ -82,3 +82,13 @@ test('the YouTube copy of an uncensored song is not the censored one', () => {
   const song = { artist: 'мукка', title: 'Девочка с каре (без цензуры)', duration: 157 };
   assert.strictEqual(pickResult(song, [{ id: 'clean', duration: 157, channel: 'МУККА', title: 'МУККА - Девочка с каре' }]), null);
 });
+
+test('versions share a base title; the artists are the same in any order', () => {
+  const { versionOf, artistKey } = require('../library/names');
+  assert.deepStrictEqual(versionOf('Девочка с каре (без цензуры)'), { base: 'девочка с каре', version: 'без цензуры' });
+  assert.deepStrictEqual(versionOf('Song (feat. X) [Sped Up]'), { base: 'song', version: 'Sped Up' });
+  assert.deepStrictEqual(versionOf('Song - Lida Remix'), { base: 'song', version: 'Lida Remix' });
+  assert.deepStrictEqual(versionOf('Love (Me)'), { base: 'love me', version: '' });
+  assert.strictEqual(artistKey('DEAD BLONDE & GSPD'), artistKey('GSPD, Dead Blonde feat. X'));
+  assert.notStrictEqual(artistKey('Max Korzh'), artistKey('Max'));
+});

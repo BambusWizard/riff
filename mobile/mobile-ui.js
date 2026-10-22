@@ -534,23 +534,73 @@ applyRowBadges();
   ];
   let sheet = null;
   const close = () => { if (sheet) { sheet.remove(); sheet = null; } };
-  const open = (row) => {
-    const items = ACTIONS.filter(([sel]) => row.querySelector(sel));
-    if (!items.length) return;
+  const sheetFor = (title, artist, html) => {
     close();
     sheet = document.createElement('div');
     sheet.className = 'row-sheet';
-    sheet.innerHTML = '<div class="row-sheet-card"><div class="row-sheet-title"></div><div class="row-sheet-artist"></div>'
-      + items.map(([, label], i) => `<button type="button" data-i="${i}">${label}</button>`).join('') + '</div>';
-    sheet.querySelector('.row-sheet-title').textContent = row.dataset.trackTitle || '';
-    sheet.querySelector('.row-sheet-artist').textContent = row.dataset.trackArtist || '';
-    sheet.addEventListener('click', (e) => {
+    sheet.innerHTML = `<div class="row-sheet-card"><div class="row-sheet-title"></div><div class="row-sheet-artist"></div>${html}</div>`;
+    sheet.querySelector('.row-sheet-title').textContent = title || '';
+    sheet.querySelector('.row-sheet-artist').textContent = artist || '';
+    document.body.appendChild(sheet);
+    return sheet;
+  };
+  const libraryVersions = (row) => {
+    const lib = window.RiffLibrary;
+    return (lib && lib.versions && lib.versions.of(row.dataset.trackPlatform, row.dataset.trackId)) || null;
+  };
+  const open = (row) => {
+    const items = ACTIONS.filter(([sel]) => row.querySelector(sel));
+    const v = libraryVersions(row);
+    if (!items.length && !v) return;
+    const el = sheetFor(row.dataset.trackTitle, row.dataset.trackArtist,
+      (v ? `<button type="button" data-v="1">Versions${v.songs.length > 1 ? ` (${v.songs.length})` : ''}</button>` : '')
+      + items.map(([, label], i) => `<button type="button" data-i="${i}">${label}</button>`).join(''));
+    el.addEventListener('click', (e) => {
       const b = e.target.closest('button[data-i]');
-      if (b) { const real = row.querySelector(items[b.dataset.i][0]); close(); if (real) real.click(); }
+      if (e.target.closest('button[data-v]')) openVersions(row);
+      else if (b) { const real = row.querySelector(items[b.dataset.i][0]); close(); if (real) real.click(); }
       else if (!e.target.closest('.row-sheet-card')) close();
     });
-    document.body.appendChild(sheet);
     if (navigator.vibrate) navigator.vibrate(15);
+  };
+
+  // the song library's versions of this song (library-sync.js): pick the one to play, split one off, or add
+  // another song of the artist as a version. Splitting and adding are done on the PC, so it has to be on
+  const esc = (x) => String(x == null ? '' : x).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const dur = (d) => (d ? `${Math.floor(d / 60)}:${String(Math.round(d % 60)).padStart(2, '0')}` : '');
+  const openVersions = (row, adding = false) => {
+    const v = libraryVersions(row);
+    if (!v) return close();
+    const lib = window.RiffLibrary;
+    const many = v.songs.length > 1;
+    const html = v.songs.map((s, i) => `<div class="version-row${s.chosen ? ' chosen' : ''}">
+        <button type="button" data-play="${i}"><span>${esc(s.title)}</span><small>${esc(s.version || 'original')}${s.duration ? ` · ${dur(s.duration)}` : ''}${s.chosen ? ' · plays' : ''}</small></button>
+        ${many ? `<button type="button" class="version-split" data-split="${i}" title="Not a version of this song">Split</button>` : ''}
+      </div>`).join('')
+      + (adding
+        ? (v.others.length ? v.others.map((o, i) => `<button type="button" data-add="${i}">+ ${esc(o.title)}${o.version ? ` (${esc(o.version)})` : ''}</button>`).join('')
+          : '<div class="version-hint">No other songs by this artist in the library</div>')
+        : '<button type="button" data-more="1">Add a version…</button>');
+    const el = sheetFor(row.dataset.trackTitle, `Versions · ${row.dataset.trackArtist || ''}`, html);
+    const busy = async (fn) => {
+      el.classList.add('busy');
+      try { await fn(); openVersions(row); } catch (e) {
+        el.classList.remove('busy');
+        if (window.RiffCore) window.RiffCore.toast(e.message || 'The library PC is not reachable', 'error');
+      }
+    };
+    el.addEventListener('click', (e) => {
+      const b = e.target.closest('button');
+      if (!b) { if (!e.target.closest('.row-sheet-card')) close(); return; }
+      if (b.dataset.play) {
+        const s = v.songs[b.dataset.play];
+        lib.versions.choose(v.group, s.id);
+        close();
+        if (window.RiffCore && window.RiffCore.play) window.RiffCore.play(s.track);
+      } else if (b.dataset.split) busy(() => lib.versions.regroup(v.songs[b.dataset.split].id, null));
+      else if (b.dataset.add) busy(() => lib.versions.regroup(v.others[b.dataset.add].id, v.songs[0].id));
+      else if (b.dataset.more) openVersions(row, true);
+    });
   };
 
   let timer = null, x0 = 0, y0 = 0, fired = 0;

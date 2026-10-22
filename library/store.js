@@ -7,11 +7,13 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { versionOf, artistKey } = require('./names');
 
 const REASONS = ['finished', 'liked'];
 const EDITABLE = ['title', 'artist', 'album', 'year', 'cover'];
 
 const sourceKey = (platform, id) => `${String(platform || '').toLowerCase()}:${String(id || '')}`;
+const groupKey = (s) => `${artistKey(s.artist)}|${versionOf(s.title).base}`;
 
 class Store {
   constructor(dir) {
@@ -186,15 +188,55 @@ class Store {
     return into;
   }
 
+  // Versions of one song ("Song", "Song (без цензуры)", "Song (Piano)") form a group, named by its oldest song's id.
+  // Songs join by artist and base title; by hand, a song is put with another one (groupWith: its id) or alone
+  // (groupWith: its own id), and that stays
+  groups() {
+    const first = new Map(); // group key -> the oldest song with it that isn't placed by hand
+    const auto = (s) => first.get(groupKey(s)) || s.id;
+    for (const s of [...this.songs].sort((a, b) => a.addedAt - b.addedAt)) {
+      if (!s.groupWith && !first.has(groupKey(s))) first.set(groupKey(s), s.id);
+    }
+    const out = new Map();
+    const resolve = (s, depth) => {
+      if (!s.groupWith) return auto(s);
+      if (s.groupWith === s.id || depth > 20) return s.id;
+      const other = this.get(s.groupWith);
+      return other ? resolve(other, depth + 1) : auto(s);
+    };
+    for (const s of this.songs) out.set(s.id, resolve(s, 0));
+    return out;
+  }
+
+  // by hand: `id` becomes a version of the song `withId` (null: a song of its own; undefined: back to automatic)
+  setGroup(id, withId) {
+    const song = this.get(id);
+    if (!song) return null;
+    if (withId === undefined) delete song.groupWith;
+    else if (withId === null || withId === id) song.groupWith = id;
+    else if (this.get(withId)) {
+      const groups = this.groups();
+      const target = groups.get(withId);
+      if (target === groups.get(id)) return song; // already together
+      // the songs of this one's group that point at it (by hand) come along
+      for (const s of this.songs) if (s.groupWith === id && s.id !== id) s.groupWith = target;
+      song.groupWith = target;
+    } else return null;
+    this.save();
+    return song;
+  }
+
   filePath(song) { return song && song.file ? path.join(this.songsDir, song.file.name) : null; }
 
   usedBytes() { return this.songs.reduce((n, s) => n + (s.file ? s.file.size : 0), 0); }
 
   // what phones keep a copy of: metadata only (no download bookkeeping), and the first source's page to play it from
   catalog() {
+    const groups = this.groups();
     return {
       rev: this.rev,
       songs: this.songs.map((s) => ({
+        group: groups.get(s.id), version: versionOf(s.title).version,
         id: s.id, title: s.title, artist: s.artist, album: s.album, year: s.year, cover: s.cover, duration: s.duration,
         sources: s.sources, url: s.urls[s.sources[0]] || '', ready: s.status === 'ready', named: !!s.match && ['auto', 'confirmed'].includes(s.match.status),
         // the PC's copy was found on YouTube by name: a phone that has the file of the song itself sends it

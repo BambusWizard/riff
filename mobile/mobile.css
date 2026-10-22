@@ -553,6 +553,20 @@ html.is-mobile .row-sheet-card button {
   background: none; color: var(--md-sys-color-on-surface); font-size: 15px;
 }
 html.is-mobile .row-sheet-card button:active { background: var(--md-sys-color-surface-container-highest); }
+/* the song library's versions of a song (row badge, and the long-press "Versions" sheet) */
+html.is-mobile .track-row-versions {
+  display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; vertical-align: 1px;
+  font-size: 11px; font-weight: 600; background: var(--md-sys-color-surface-container-highest); color: var(--md-sys-color-outline);
+}
+html.is-mobile .row-sheet-card { max-height: 80vh; overflow-y: auto; }
+html.is-mobile .row-sheet.busy .row-sheet-card { opacity: .6; pointer-events: none; }
+html.is-mobile .version-row { display: flex; align-items: center; gap: 4px; }
+html.is-mobile .version-row > button[data-play] { flex: 1; min-width: 0; }
+html.is-mobile .version-row > button[data-play] span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.is-mobile .version-row > button[data-play] small { display: block; font-size: 12px; color: var(--md-sys-color-outline); }
+html.is-mobile .version-row.chosen > button[data-play] span { color: var(--md-sys-color-primary); font-weight: 600; }
+html.is-mobile .row-sheet-card button.version-split { width: auto; flex: none; padding: 10px 12px; font-size: 13px; color: var(--md-sys-color-outline); }
+html.is-mobile .version-hint { padding: 12px 8px; font-size: 13px; color: var(--md-sys-color-outline); }
 @keyframes row-sheet-fade { from { opacity: 0; } }
 @keyframes row-sheet-up { from { transform: translateY(100%); } }
 

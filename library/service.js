@@ -14,6 +14,7 @@
 //   GET    /review                 songs whose names the catalogues weren't sure about, with their guesses
 //   POST   /songs/<id>/match       {index} (one of its guesses) or {title, artist, ...}: confirm its names
 //   POST   /songs/<id>/search      {artist, title}: ask the catalogues again, with better words
+//   POST   /songs/<id>/group       {with: <id> | null | "auto"}: versions of one song, by hand
 //   GET    /songs/<id>/cover       the cover written into the file
 //   GET    /ui                     the library page (only on this PC, no key needed)
 // Every other request carries one of the keys from config.json (header x-riff-key); the key says whose phone it is.
@@ -27,6 +28,7 @@ const { Store } = require('./store');
 const downloader = require('./downloader');
 const { createNamer } = require('./metadata');
 const lookup = require('./lookup');
+const { versionOf } = require('./names');
 
 const DEFAULT_DIR = path.join(os.homedir(), 'Music', 'Riff Library');
 const MAX_ATTEMPTS = 3;
@@ -216,8 +218,11 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
       if (req.method === 'GET' && u.pathname === '/review') {
         return send(res, 200, { songs: store.songs.filter((s) => !s.locked && s.match && ['review', 'none'].includes(s.match.status)) });
       }
-      if (req.method === 'GET' && u.pathname === '/songs') return send(res, 200, { songs: store.songs });
-      const m = /^\/songs\/([0-9a-f]+)(?:\/(file|cover|match|search))?$/.exec(u.pathname);
+      if (req.method === 'GET' && u.pathname === '/songs') {
+        const groups = store.groups();
+        return send(res, 200, { songs: store.songs.map((s) => ({ ...s, group: groups.get(s.id), version: versionOf(s.title).version })) });
+      }
+      const m = /^\/songs\/([0-9a-f]+)(?:\/(file|cover|match|search|group))?$/.exec(u.pathname);
       const song = m && store.get(m[1]);
       if (!song) return send(res, 404, 'not found');
       const part = m[2] || '';
@@ -246,6 +251,13 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
         return send(res, 200, { candidates: song.match.candidates });
       }
       if (!part && req.method === 'PATCH') { const done = store.update(song.id, await readJson(req)); namer.add(song.id); return send(res, 200, done); }
+      // versions by hand: {with: "<id>"} makes it a version of that song, {with: null} a song of its own,
+      // {with: "auto"} back to grouping by name
+      if (part === 'group' && req.method === 'POST') {
+        const body = await readJson(req);
+        const done = store.setGroup(song.id, body.with === 'auto' ? undefined : body.with || null);
+        return done ? send(res, 200, { id: song.id, group: store.groups().get(song.id) }) : send(res, 404, 'no such song');
+      }
       if (!part && req.method === 'DELETE') { store.remove(song.id); return send(res, 200, { ok: true }); }
       return send(res, 405, 'method not allowed');
     } catch (e) {

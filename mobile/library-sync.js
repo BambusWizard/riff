@@ -241,6 +241,81 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
     return new Response(body, { status: 200, headers: { 'Content-Type': 'application/json' } });
   };
 
+  // ---- versions: the library's songs of one group ("Song", "Song (без цензуры)", "Song (Piano)") show as one row.
+  // Which one plays is each person's choice (riff_library_versions, synced between their own devices); until they
+  // choose: the one they liked, else the uncensored one, else the song itself ----
+  const VERSIONS = 'riff_library_versions';
+  const UNCENSORED = /без\s*цензуры|без\s*мата|uncensored|нецензур|explicit/i;
+  const groupSongs = (group) => {
+    const seen = new Set();
+    const out = [];
+    for (const song of bySource.values()) if (song.group === group && !seen.has(song.id)) { seen.add(song.id); out.push(song); }
+    return out;
+  };
+  const choices = () => { try { return JSON.parse(localStorage.getItem(VERSIONS)) || {}; } catch (e) { return {}; } };
+  const preferred = (group) => {
+    const all = groupSongs(group);
+    const mine = all.find((song) => song.id === choices()[group]);
+    if (mine) return mine;
+    let liked = new Set();
+    try { liked = new Set((JSON.parse(localStorage.getItem(FAV)) || []).map(keyOf)); } catch (e) {}
+    return all.find((song) => song.sources.some((k) => liked.has(k))) || all.find((song) => UNCENSORED.test(song.version))
+      || all.find((song) => !song.version) || all[0];
+  };
+  // one row per group, where its first row was, playing the preferred version
+  const collapse = (tracks) => {
+    const placed = new Set();
+    const out = [];
+    for (const t of tracks) {
+      const song = bySource.get(keyOf(t));
+      if (!song || !song.group) { out.push(t); continue; }
+      if (placed.has(song.group)) continue;
+      placed.add(song.group);
+      const all = groupSongs(song.group);
+      const pick = all.length > 1 ? preferred(song.group) : song;
+      const row = pick.id === song.id ? t : asTrack(pick);
+      Object.assign(row, { inLibrary: true, libraryGroup: song.group, versionCount: all.length });
+      out.push(row);
+    }
+    return out;
+  };
+  const refreshCatalog = async (pc) => {
+    const catalog = await call(pc, '/catalog', {}, 30000);
+    fs.mkdirSync('/data/library', { recursive: true });
+    fs.writeFileSync(CATALOG, JSON.stringify(catalog));
+    useCatalog(catalog);
+  };
+  const reachPc = async () => {
+    const pc = pcOnline() ? lastPc : await findPc();
+    if (!pc) throw new Error('the PC with the library is off');
+    return pc;
+  };
+  // what the phone's version menu (mobile-ui.js) shows and does
+  const versions = {
+    of: (platform, id) => {
+      const song = bySource.get(`${platform || 'youtube'}:${id}`);
+      if (!song) return null;
+      const pick = preferred(song.group);
+      return {
+        group: song.group,
+        songs: groupSongs(song.group).map((s) => ({ id: s.id, title: s.title, artist: s.artist, version: s.version, duration: s.duration, chosen: s === pick, track: asTrack(s) })),
+        // other songs by the artist, to add to this one as a version
+        others: songsBy(song.artist).filter((s) => s.group !== song.group).map((s) => ({ id: s.id, title: s.title, version: s.version })),
+      };
+    },
+    choose: (group, songId) => {
+      const c = choices();
+      c[group] = songId;
+      try { localStorage.setItem(VERSIONS, JSON.stringify(c)); } catch (e) {}
+    },
+    // by hand, on the PC: withId a song to join, null to stand alone
+    regroup: async (songId, withId) => {
+      const pc = await reachPc();
+      await call(pc, `/songs/${songId}/group`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ with: withId }) });
+      await refreshCatalog(pc);
+    },
+  };
+
   // ---- searching: songs the library knows get its names, and library songs that match come first ----
   const asTrack = (song) => {
     const [platform, id] = song.sources[0].split(/:(.*)/);
@@ -271,7 +346,7 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
       }
       const lead = hits.slice(0, 5);
       const libSongs = [...lead, ...data.tracks.filter((t) => t.inLibrary)].map((t) => bySource.get(keyOf(t)));
-      data.tracks = [...lead, ...data.tracks.filter((t) => t.inLibrary || !libSongs.some((song) => sameSong(t, song)))];
+      data.tracks = collapse([...lead, ...data.tracks.filter((t) => t.inLibrary || !libSongs.some((song) => sameSong(t, song)))]);
     }
     return JSON.stringify(data);
   };
@@ -300,11 +375,11 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
       for (const t of data.artist.tracks) { renameTrack(t, names); if (bySource.has(keyOf(t))) t.inLibrary = true; }
       const shown = new Set(data.artist.tracks.map(keyOf));
       const lead = mine.filter((song) => !song.sources.some((k) => shown.has(k)));
-      data.artist.tracks = [...lead.map(asTrack), ...data.artist.tracks.filter((t) => t.inLibrary || !mine.some((song) => sameSong(t, song)))];
+      data.artist.tracks = collapse([...lead.map(asTrack), ...data.artist.tracks.filter((t) => t.inLibrary || !mine.some((song) => sameSong(t, song)))]);
       return { status, body: JSON.stringify(data) };
     }
     if (!mine.length) return null;
-    const artist = { name: mine[0].artist, bio: '', avatar: (mine.find((song) => song.cover) || {}).cover || '', isVerified: false, tracks: mine.map(asTrack) };
+    const artist = { name: mine[0].artist, bio: '', avatar: (mine.find((song) => song.cover) || {}).cover || '', isVerified: false, tracks: collapse(mine.map(asTrack)) };
     return { status: 200, body: JSON.stringify({ success: true, artist }) };
   };
 
@@ -318,6 +393,7 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
   return {
     streamFor,
     adjust,
+    versions,
     status: () => ({ ...status }),
     run,
     // cleanIds of songs whose files must stay until the PC has them (cache-limit.js)

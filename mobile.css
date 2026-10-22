@@ -620,3 +620,6 @@ html.is-mobile .sidebar .nav-badge[data-big="1"]::after { content: '99+'; font-s
    tab bar in that mode gets the bar's colour instead of a black strip, and the page canvas matches the app */
 html.is-mobile { background: var(--md-sys-color-background-solid, #121214); }
 html.is-mobile .sidebar { box-shadow: 0 120px 0 0 var(--md-sys-color-surface-container-solid, #1E1F22) !important; }
+/* the page is as tall as the screen (bridge.js measures it into --app-h on the Home Screen app); body is
+   absolutely positioned against <html>, so it and everything sitting on it reach the bottom edge */
+html.is-mobile { position: relative; height: var(--app-h, 100%); }

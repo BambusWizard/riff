@@ -555,7 +555,7 @@ html.is-mobile .row-sheet-card button {
 html.is-mobile .row-sheet-card button:active { background: var(--md-sys-color-surface-container-highest); }
 /* the song library's versions of a song (row badge, and the long-press "Versions" sheet) */
 html.is-mobile .track-row-versions {
-  display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; vertical-align: 1px;
+  display: inline-block; margin-right: 6px; padding: 1px 7px; border-radius: 999px; vertical-align: 1px;
   font-size: 11px; font-weight: 600; background: var(--md-sys-color-surface-container-highest); color: var(--md-sys-color-outline);
 }
 html.is-mobile .row-sheet-card { max-height: 80vh; overflow-y: auto; }

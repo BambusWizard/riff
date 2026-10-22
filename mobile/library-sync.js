@@ -41,13 +41,15 @@ function applyNames() {
     }
     if (changed) localStorage.setItem(key, JSON.stringify(list));
   }
-  // later in the session (a new catalog): the app's own copies of the lists too, or its next save would put the
-  // old names back
+  renameState(names);
+}
+// later in the session (a new catalog): the app's own copies of the lists too, or its next save would put the
+// old names back
+function renameState(names) {
   const state = window.RiffCore && window.RiffCore.state;
-  if (state) {
-    for (const list of [state.favorites, state.history]) if (Array.isArray(list)) for (const t of list) renameTrack(t, names);
-    if (Array.isArray(state.playlists)) for (const pl of state.playlists) if (pl && Array.isArray(pl.tracks)) for (const t of pl.tracks) renameTrack(t, names);
-  }
+  if (!state) return;
+  for (const list of [state.favorites, state.history]) if (Array.isArray(list)) for (const t of list) renameTrack(t, names);
+  if (Array.isArray(state.playlists)) for (const pl of state.playlists) if (pl && Array.isArray(pl.tracks)) for (const t of pl.tracks) renameTrack(t, names);
 }
 
 // a search's words in a song's names (any order, no case, accents or punctuation)
@@ -190,7 +192,8 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
     }
     status.songs = c.songs.length;
     const json = JSON.stringify(names);
-    if (localStorage.getItem(NAMES) !== json) { localStorage.setItem(NAMES, json); applyNames(); }
+    if (localStorage.getItem(NAMES) !== json) { localStorage.setItem(NAMES, json); applyNames(); } else renameState(names);
+    window.dispatchEvent(new CustomEvent('riff:library-versions')); // the likes list regroups
   };
   const pcOnline = () => lastPc && status.state === 'online' && Date.now() - status.at < 5 * 60 * 1000;
 
@@ -255,6 +258,9 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
     localStorage.setItem(LIKES_QUEUED, '1');
   }
 
+  // the catalog may come before the app has read its lists: once it has, they get the names too
+  window.addEventListener('riff:ready', () => { applyNames(); window.dispatchEvent(new CustomEvent('riff:library-versions')); });
+
   setTimeout(run, 8000);
   setInterval(run, 3 * 60 * 1000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) soon(); });
@@ -284,14 +290,17 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
     return out;
   };
   const choices = () => { try { return JSON.parse(localStorage.getItem(VERSIONS)) || {}; } catch (e) { return {}; } };
-  const preferred = (group) => {
-    const all = groupSongs(group);
+  // the one chosen; else of the liked ones the uncensored one, then any; else the uncensored one, then the song
+  // itself. `among`: only these may be picked (the likes list shows liked versions only)
+  const preferred = (group, among = null) => {
+    const all = groupSongs(group).filter((song) => !among || among.has(song.id));
     const mine = all.find((song) => song.id === choices()[group]);
     if (mine) return mine;
     let liked = new Set();
     try { liked = new Set((JSON.parse(localStorage.getItem(FAV)) || []).map(keyOf)); } catch (e) {}
-    return all.find((song) => song.sources.some((k) => liked.has(k))) || all.find((song) => UNCENSORED.test(song.version))
-      || all.find((song) => !song.version) || all[0];
+    const best = (list) => list.find((song) => UNCENSORED.test(song.version)) || list.find((song) => !song.version) || list[0];
+    const likedOnes = all.filter((song) => song.sources.some((k) => liked.has(k)));
+    return (likedOnes.length && best(likedOnes)) || best(all);
   };
   // one row per group, where its first row was, playing the preferred version
   const collapse = (tracks) => {
@@ -307,6 +316,29 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
       const row = pick.id === song.id ? t : asTrack(pick);
       Object.assign(row, { inLibrary: true, libraryGroup: song.group, versionCount: all.length });
       out.push(row);
+    }
+    return out;
+  };
+  // the likes list: versions liked more than once show as one row (copies: the likes themselves stay as they are)
+  const collapseLikes = (tracks) => {
+    const present = new Map(); // group -> ids of its songs in the list
+    for (const t of tracks) {
+      const song = bySource.get(keyOf(t));
+      if (song && song.group) { if (!present.has(song.group)) present.set(song.group, new Set()); present.get(song.group).add(song.id); }
+    }
+    const placed = new Set();
+    const out = [];
+    for (const t of tracks) {
+      const song = bySource.get(keyOf(t));
+      if (!song || !song.group) { out.push(t); continue; }
+      const count = groupSongs(song.group).length;
+      if (count < 2) { out.push(t); continue; }
+      if (placed.has(song.group)) continue;
+      const pick = preferred(song.group, present.get(song.group));
+      const row = pick.id === song.id ? t : tracks.find((x) => bySource.get(keyOf(x)) === pick);
+      if (!row) { out.push(t); continue; }
+      placed.add(song.group);
+      out.push({ ...row, libraryGroup: song.group, versionCount: count });
     }
     return out;
   };
@@ -338,6 +370,7 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
       const c = choices();
       c[group] = songId;
       try { localStorage.setItem(VERSIONS, JSON.stringify(c)); } catch (e) {}
+      window.dispatchEvent(new CustomEvent('riff:library-versions'));
     },
     // by hand, on the PC: withId a song to join, null to stand alone
     regroup: async (songId, withId) => {
@@ -425,6 +458,7 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
     streamFor,
     adjust,
     versions,
+    collapseLikes,
     status: () => ({ ...status }),
     run,
     // cleanIds of songs whose files must stay until the PC has them (cache-limit.js)

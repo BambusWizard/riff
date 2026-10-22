@@ -6187,7 +6187,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       <span class="track-row-index">${(isAlbum && track.no) ? track.no : (idx + 1)}</span>
       ${!isAlbum ? `<img class="track-row-thumb" src="${escapeHtml(rowThumb || '')}" alt="" onerror="this.style.visibility='hidden'">` : ''}
       <div class="track-row-info">
-      <span class="track-row-title">${escapeHtml(track.title || 'untitled')}${track.versionCount > 1 ? ` <span class="track-row-versions">${track.versionCount} versions</span>` : ''}</span>
+      <span class="track-row-title">${track.versionCount > 1 ? `<span class="track-row-versions">${track.versionCount} versions</span>` : ''}${escapeHtml(track.title || 'untitled')}</span>
       ${showArtist ? `<span class="track-row-artist" title="view artist profile">${escapeHtml(track.artist || 'unknown artist')}</span>` : ''}
       </div>
       <span class="track-row-duration">${formatDuration(track.duration)}</span>
@@ -6241,6 +6241,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           let currentList = tracks;
           if (context === 'favorites') {
             currentList = sortTracksFor('favorites', state.favorites);
+            if (window.RiffLibrary && window.RiffLibrary.collapseLikes) currentList = window.RiffLibrary.collapseLikes(currentList);
             clickIndex = currentList.findIndex(t => isSameTrack(t, track));
           } else if (context === 'playlist') {
             const pl = state.playlists.find(p => p.id === state.currentPlaylistId);
@@ -6691,10 +6692,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       filtered = filtered.filter(t => matchesTrackQuery(t, query));
     }
     filtered = sortTracksFor('favorites', filtered);
+    if (window.RiffLibrary && window.RiffLibrary.collapseLikes) filtered = window.RiffLibrary.collapseLikes(filtered); // versions of one song: one row
     if (el.favoritesSort) el.favoritesSort.value = getTrackSortMode('favorites');
     if (el.favoritesSubtitle) el.favoritesSubtitle.textContent = query ? `${filtered.length} of ${state.favorites.length} tracks` : `${state.favorites.length} tracks saved`;
     if (el.favoritesTracksList) renderTracks(el.favoritesTracksList, filtered, 'favorites');
   }
+
+  window.addEventListener('riff:library-versions', () => renderFavoritesView());
 
   if (el.favoritesSearchInput) {
     el.favoritesSearchInput.addEventListener('input', () => renderFavoritesView());

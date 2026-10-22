@@ -197,6 +197,8 @@ class Store {
       songs: this.songs.map((s) => ({
         id: s.id, title: s.title, artist: s.artist, album: s.album, year: s.year, cover: s.cover, duration: s.duration,
         sources: s.sources, url: s.urls[s.sources[0]] || '', ready: s.status === 'ready', named: !!s.match && ['auto', 'confirmed'].includes(s.match.status),
+        // the PC's copy was found on YouTube by name: a phone that has the file of the song itself sends it
+        ...(s.found && !s.fromPhone ? { guess: true } : {}),
       })),
     };
   }

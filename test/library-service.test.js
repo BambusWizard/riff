@@ -139,10 +139,12 @@ test("the PC's copy found on YouTube is replaced by the phone's file of the song
   const { body } = await api('/ingest', { method: 'POST', body: yandex });
   await settle();
   assert.strictEqual(svc.store.get(body.id).status, 'ready');
+  assert.strictEqual((await api('/catalog')).body.songs[0].guess, true); // phones that have it send theirs
   assert.strictEqual((await api('/ingest', { method: 'POST', body: { ...yandex, hasFile: true } })).body.needFile, true);
   const mine = Buffer.alloc(300 * 1024, 9);
   await api(`/songs/${body.id}/file?ext=m4a`, { method: 'PUT', body: mine });
   assert.strictEqual(svc.store.get(body.id).file.size, mine.length);
+  assert.strictEqual((await api('/catalog')).body.songs[0].guess, undefined);
   assert.strictEqual((await api('/ingest', { method: 'POST', body: { ...yandex, hasFile: true } })).body.needFile, false);
 });
 

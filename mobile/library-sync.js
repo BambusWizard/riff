@@ -193,6 +193,14 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
         if (done || Date.now() - item.at > MAX_AGE) writeQueue(readQueue().filter((x) => keyOf(x) !== keyOf(item)));
       }
       const catalog = await call(pc, '/catalog', {}, 30000);
+      // songs the PC found on YouTube by name, which this phone has from where they played
+      for (const song of catalog.songs) {
+        if (!song.guess) continue;
+        const own = song.sources.map((k) => k.split(/:(.*)/)).find(([p]) => p !== 'youtube');
+        const file = own && !uploadFailed.has(`${own[0]}:${own[1]}`) && localFile({ id: own[1] });
+        if (!file) continue;
+        try { await upload(pc, song.id, file); song.guess = false; log(`library: sent ${song.artist} - ${song.title}`); } catch (e) { uploadFailed.add(`${own[0]}:${own[1]}`); }
+      }
       fs.mkdirSync('/data/library', { recursive: true });
       fs.writeFileSync(CATALOG, JSON.stringify(catalog));
       useCatalog(catalog);

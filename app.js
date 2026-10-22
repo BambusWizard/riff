@@ -2906,6 +2906,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       el.nativeAudio.removeAttribute('src');
       el.nativeAudio.load();
     } catch (e) {}
+    // phones: keep the page awake in the background until the new song plays (mobile/bridge.js)
+    if (window.__riffKeepAlive) {
+      window.__riffKeepAlive.start();
+      try {
+        if (track.duration > 0) navigator.mediaSession.setPositionState({ duration: track.duration, playbackRate: 1, position: 0 });
+      } catch (e) {}
+    }
 
     if (hlsInstance) {
       try { hlsInstance.destroy(); } catch (e) {}
@@ -3054,6 +3061,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (err) {
       if (err.name === 'AbortError') return;
       if (currentToken === state.loadToken) {
+        if (window.__riffKeepAlive) window.__riffKeepAlive.stop();
         console.warn('Track playback notice:', err);
         updatePlayPauseButton(false, false);
         if (el.trackLoadingOverlay) el.trackLoadingOverlay.classList.add('hidden');
@@ -5247,6 +5255,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     el.nativeAudio.addEventListener('playing', () => {
+      if (window.__riffKeepAlive) window.__riffKeepAlive.stop();
       state.isPlaying = true;
       document.body.classList.add('is-playing');
       updatePlayPauseButton(true, false);

@@ -159,6 +159,29 @@ HTMLMediaElement.prototype.play = function () {
   return this.__riffPending ? this.__riffPending.then(() => realPlay.call(this)) : realPlay.call(this);
 };
 
+// iOS suspends a page in the background within seconds of its audio stopping, so a song switched from the
+// lock screen never finished downloading. A silent loop keeps the page awake while the next song loads.
+function silentWavUrl() {
+  const rate = 8000, n = rate; // one second, 8-bit mono
+  const b = new Uint8Array(44 + n);
+  const v = new DataView(b.buffer);
+  const str = (o, t) => [...t].forEach((c, i) => { b[o + i] = c.charCodeAt(0); });
+  str(0, 'RIFF'); v.setUint32(4, 36 + n, true); str(8, 'WAVE'); str(12, 'fmt ');
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, rate, true); v.setUint32(28, rate, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true);
+  str(36, 'data'); v.setUint32(40, n, true); b.fill(128, 44);
+  return URL.createObjectURL(new Blob([b], { type: 'audio/wav' }));
+}
+const keepAlive = new Audio();
+keepAlive.loop = true;
+keepAlive.src = silentWavUrl();
+window.__riffKeepAlive = {
+  start() { keepAlive.play().catch(() => {}); },
+  stop() { keepAlive.pause(); },
+};
+// iOS only lets a media element start without a tap once a tap has started it
+document.addEventListener('touchend', () => { keepAlive.play().then(() => keepAlive.pause()).catch(() => {}); }, { once: true, capture: true });
+
 // <img src="..."> written as HTML strings never hit the setter above.
 new MutationObserver((muts) => {
   for (const m of muts) {

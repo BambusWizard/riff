@@ -1223,7 +1223,18 @@ async function cacheThumbnailToDisk(cleanId, thumbnailUrl) {
   return null;
 }
 
-async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}) {
+// a second caller for a song that is already downloading (a prefetch, then the user skips to it) waits for
+// that download instead of getting an empty answer
+const downloadPromises = new Map();
+function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}) {
+  const cleanId = cleanTrackId(trackId);
+  if (downloadPromises.has(cleanId)) return downloadPromises.get(cleanId);
+  const p = downloadTrackToDiskOnce(trackUrl, trackId, platform, meta).finally(() => downloadPromises.delete(cleanId));
+  downloadPromises.set(cleanId, p);
+  return p;
+}
+
+async function downloadTrackToDiskOnce(trackUrl, trackId, platform, meta = {}) {
   const cleanId = cleanTrackId(trackId);
   if (downloadingSet.has(cleanId) || await findCachedFile(cleanId)) return;
   downloadingSet.add(cleanId);

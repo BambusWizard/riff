@@ -164,6 +164,7 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
   const pcOnline = () => lastPc && status.state === 'online' && Date.now() - status.at < 5 * 60 * 1000;
 
   let running = false;
+  const uploadFailed = new Set();
   const run = async () => {
     if (running || document.hidden) return;
     running = true;
@@ -176,12 +177,17 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
       for (const item of readQueue()) {
         let done = false;
         try {
-          const r = await call(pc, '/ingest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(item) });
-          if (r.status === 'ready') done = true;
-          else if (r.needFile) {
-            const file = localFile(item);
-            if (file) { await upload(pc, r.id, file); done = true; log(`library: sent ${item.artist} - ${item.title}`); }
+          // a song from Yandex, SoundCloud...: the file cached here beats what the PC would find on YouTube by name
+          const file = localFile(item);
+          const hasFile = !!file && item.platform !== 'youtube' && !uploadFailed.has(keyOf(item));
+          const r = await call(pc, '/ingest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...item, hasFile }) });
+          if (r.needFile && file) {
+            // a file the PC refuses (too big, broken) isn't offered again: then the PC gets the song itself
+            try { await upload(pc, r.id, file); } catch (e) { uploadFailed.add(keyOf(item)); throw e; }
+            done = true;
+            log(`library: sent ${item.artist} - ${item.title}`);
           }
+          else if (r.status === 'ready') done = true;
           // pending: the PC is downloading it itself; it stays here (and its file stays cached) until it is in
         } catch (e) { status.error = e.message; continue; }
         if (done || Date.now() - item.at > MAX_AGE) writeQueue(readQueue().filter((x) => keyOf(x) !== keyOf(item)));

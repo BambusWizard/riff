@@ -122,6 +122,38 @@ test('a song found on YouTube that the library already has becomes one song', as
   assert.strictEqual((await api('/ingest', { method: 'POST', body: { platform: 'yandex', id: 'ym2' } })).body.status, 'ready');
 });
 
+test('a phone that has the file of a Yandex song sends it, and the PC does not download it', async (t) => {
+  const yandex = { platform: 'yandex', id: 'ym3', url: 'https://music.yandex.ru/track/3', title: 'Song', artist: 'Lida', duration: 180, reason: 'liked', hasFile: true };
+  const { api, settle, calls } = await start(t, { found: { id: 'yt9', url: 'https://www.youtube.com/watch?v=yt9' } });
+  const { body } = await api('/ingest', { method: 'POST', body: yandex });
+  await settle();
+  assert.strictEqual(body.needFile, true);
+  assert.strictEqual(calls.length, 0);
+  assert.strictEqual((await api(`/songs/${body.id}/file?ext=m4a`, { method: 'PUT', body: AUDIO })).body.status, 'ready');
+  assert.strictEqual((await api('/ingest', { method: 'POST', body: yandex })).body.needFile, false);
+});
+
+test("the PC's copy found on YouTube is replaced by the phone's file of the song", async (t) => {
+  const yandex = { platform: 'yandex', id: 'ym4', url: 'https://music.yandex.ru/track/4', title: 'Song', artist: 'Lida', duration: 180, reason: 'liked' };
+  const { api, settle, svc } = await start(t, { fails: (u) => u.includes('yandex'), found: { id: 'yt9', url: 'https://www.youtube.com/watch?v=yt9' } });
+  const { body } = await api('/ingest', { method: 'POST', body: yandex });
+  await settle();
+  assert.strictEqual(svc.store.get(body.id).status, 'ready');
+  assert.strictEqual((await api('/ingest', { method: 'POST', body: { ...yandex, hasFile: true } })).body.needFile, true);
+  const mine = Buffer.alloc(300 * 1024, 9);
+  await api(`/songs/${body.id}/file?ext=m4a`, { method: 'PUT', body: mine });
+  assert.strictEqual(svc.store.get(body.id).file.size, mine.length);
+  assert.strictEqual((await api('/ingest', { method: 'POST', body: { ...yandex, hasFile: true } })).body.needFile, false);
+});
+
+test('a YouTube song is downloaded by the PC even when the phone has it', async (t) => {
+  const { api, settle, calls } = await start(t);
+  const r = (await api('/ingest', { method: 'POST', body: { ...song, hasFile: true } })).body;
+  await settle();
+  assert.strictEqual(r.needFile, false);
+  assert.strictEqual(calls.length, 1);
+});
+
 test('the audio is served with Range support for seeking', async (t) => {
   const { api, settle } = await start(t);
   const { body } = await api('/ingest', { method: 'POST', body: song });

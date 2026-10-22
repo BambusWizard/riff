@@ -30,6 +30,7 @@ const lookup = require('./lookup');
 
 const DEFAULT_DIR = path.join(os.homedir(), 'Music', 'Riff Library');
 const MAX_ATTEMPTS = 3;
+const PHONE_WAIT = 10 * 60 * 1000; // a phone that said it has the file: the PC doesn't download it meanwhile
 const MAX_UPLOAD = 60 * 1024 * 1024;
 const AUDIO = { m4a: 'audio/mp4', mp3: 'audio/mpeg', opus: 'audio/ogg', ogg: 'audio/ogg', webm: 'audio/webm', flac: 'audio/flac', aac: 'audio/aac', wav: 'audio/wav' };
 
@@ -60,7 +61,8 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
   const queue = [];
   const active = new Set(); // ids being downloaded right now: a phone asking again doesn't start a second download
   let toolsReady = null;
-  const enqueue = (song) => { if (song.status === 'pending' && !queue.includes(song.id) && !active.has(song.id)) { queue.push(song.id); pump(); } };
+  const waitsForPhone = (song) => song.phoneHas && Date.now() - song.phoneHas < PHONE_WAIT;
+  const enqueue = (song) => { if (song.status === 'pending' && !waitsForPhone(song) && !queue.includes(song.id) && !active.has(song.id)) { queue.push(song.id); pump(); } };
   const pump = () => {
     while (active.size < 2 && queue.length) {
       const song = store.get(queue.shift());
@@ -153,7 +155,8 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
 
   function receiveFile(req, res, song, ext) {
     if (!AUDIO[ext]) return send(res, 400, 'unsupported format');
-    if (song.status === 'ready') { req.resume(); return send(res, 200, { id: song.id, status: song.status }); } // the PC got it meanwhile
+    // the PC got it meanwhile (a copy it found on YouTube by name is replaced by the phone's)
+    if (song.status === 'ready' && !(song.found && !song.fromPhone)) { req.resume(); return send(res, 200, { id: song.id, status: song.status }); }
     const tmp = path.join(store.songsDir, `${song.id}.upload-${crypto.randomBytes(4).toString('hex')}`);
     const out = fs.createWriteStream(tmp);
     let size = 0;
@@ -167,6 +170,8 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
       if (size < 50 * 1024) return fail(400, 'file too small to be a song');
       const name = `${song.id}.${ext}`;
       fs.renameSync(tmp, path.join(store.songsDir, name));
+      song.fromPhone = true;
+      song.phoneHas = 0;
       store.setFile(song.id, name, size);
       log(`+ ${song.artist} - ${song.title} (from a phone, ${Math.round(size / 1024)} KB)`);
       namer.add(song.id);
@@ -201,8 +206,12 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
         const body = await readJson(req);
         const { song, created } = store.ingest({ ...body, user });
         if (created) { log(`> ${song.artist} - ${song.title} (${body.reason || 'finished'}, ${user})`); namer.add(song.id); }
-        enqueue(song);
-        return send(res, 200, { id: song.id, status: song.status, needFile: song.status === 'needs-file' });
+        // A phone that has the file of a song from Yandex, SoundCloud...: its copy is the very recording that played,
+        // better than the PC's guess on YouTube; the PC waits for it. YouTube songs the PC downloads itself (the same
+        // video, and nothing for the phone to send)
+        const better = body.hasFile && body.platform !== 'youtube' && !song.fromPhone && (song.status !== 'ready' || song.found);
+        if (better) { song.phoneHas = Date.now(); store.save(); } else enqueue(song);
+        return send(res, 200, { id: song.id, status: song.status, needFile: song.status === 'needs-file' || !!better });
       }
       if (req.method === 'GET' && u.pathname === '/review') {
         return send(res, 200, { songs: store.songs.filter((s) => !s.locked && s.match && ['review', 'none'].includes(s.match.status)) });

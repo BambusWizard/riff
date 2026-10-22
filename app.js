@@ -6341,7 +6341,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     // row pitch is measured after the first rows are on screen: phones lay rows out shorter than 64px,
     // and a wrong pitch makes the list jump every time a chunk is swapped
     let itemHeight = container._rowPitch || 64;
-    const overscan = 15;
+    // phones: iOS momentum scrolling sends few scroll events, so a fast fling outruns the rows that are swapped in;
+    // lists that fit in memory are drawn whole there, longer ones keep a bigger margin of rows off screen
+    const isPhone = document.documentElement.classList.contains('is-mobile');
+    const drawAll = isPhone && tracks.length <= 300;
+    const overscan = isPhone ? 40 : 15;
     const rendered = new Map(); // idx -> row; rows that stay in range are kept, so their covers don't reload
 
     function renderChunk() {
@@ -6357,8 +6361,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       startIndex = Math.floor(startIndex / 5) * 5;
       endIndex = Math.ceil(endIndex / 5) * 5;
       
-      startIndex = Math.max(0, startIndex);
-      endIndex = Math.min(tracks.length, endIndex);
+      startIndex = drawAll ? 0 : Math.max(0, startIndex);
+      endIndex = drawAll ? tracks.length : Math.min(tracks.length, endIndex);
       
       if (container._lastStartIndex === startIndex && container._lastEndIndex === endIndex) return;
       container._lastStartIndex = startIndex;

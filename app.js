@@ -6338,9 +6338,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
 
-    const itemHeight = 64;
+    // row pitch is measured after the first rows are on screen: phones lay rows out shorter than 64px,
+    // and a wrong pitch makes the list jump every time a chunk is swapped
+    let itemHeight = container._rowPitch || 64;
     const overscan = 15;
-    
+    const rendered = new Map(); // idx -> row; rows that stay in range are kept, so their covers don't reload
+
     function renderChunk() {
       if (!scrollParent || container._isDraggingReorder) return;
       const parentRect = scrollParent.getBoundingClientRect();
@@ -6362,20 +6365,34 @@ document.addEventListener('DOMContentLoaded', async () => {
       container._lastEndIndex = endIndex;
       
       const currentCanonicalId = state.currentTrack ? getTrackCanonicalId(state.currentTrack) : '';
-      const fragment = document.createDocumentFragment();
-      for (let idx = startIndex; idx < endIndex; idx++) {
-         const track = tracks[idx];
-         const row = createTrackRow(track, idx, currentCanonicalId, context, tracks, container);
-         if (container._hasInitialRendered) row.style.animation = 'none';
-         fragment.appendChild(row);
+      for (const [idx, row] of rendered) {
+        if (idx < startIndex || idx >= endIndex) { row.remove(); rendered.delete(idx); }
       }
-      
-      container.innerHTML = '';
+      let next = null; // rows are inserted in index order in front of the first kept row after them
+      for (let idx = endIndex - 1; idx >= startIndex; idx--) {
+        let row = rendered.get(idx);
+        if (row && row.parentNode !== container) row = null; // taken out by other code (e.g. an unlike)
+        if (!row) {
+          row = createTrackRow(tracks[idx], idx, currentCanonicalId, context, tracks, container);
+          if (container._hasInitialRendered) row.style.animation = 'none';
+          container.insertBefore(row, next);
+          rendered.set(idx, row);
+        }
+        next = row;
+      }
+
       container.style.paddingTop = `${startIndex * itemHeight}px`;
       container.style.paddingBottom = `${(tracks.length - endIndex) * itemHeight}px`;
-      container.appendChild(fragment);
       container._hasInitialRendered = true;
       highlightPlayingRow();
+
+      const a = rendered.get(startIndex), b = rendered.get(startIndex + 1);
+      const pitch = a && b ? b.offsetTop - a.offsetTop : 0;
+      if (pitch > 20 && Math.abs(pitch - itemHeight) > 0.5) {
+        itemHeight = container._rowPitch = pitch;
+        container._lastStartIndex = container._lastEndIndex = -1;
+        renderChunk();
+      }
     }
     
     container._vScrollHandler = () => {

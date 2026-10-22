@@ -464,3 +464,8 @@ html.is-mobile .artist-bio-snippet.expanded { -webkit-line-clamp: unset !importa
 html.is-mobile .artist-actions-bar { width: 100% !important; justify-content: center !important; margin-top: 4px !important; }
 html.is-mobile #btn-play-artist-tracks { width: 100% !important; justify-content: center !important; height: 44px !important; }
 html.is-mobile .platform-btn-ym { display: flex !important; }
+
+/* big blurred backdrops inside scrolling pages: their own layer, painted once, so scrolling only moves them */
+html.is-mobile #artist-hero-backdrop,
+html.is-mobile #album-hero-fx,
+html.is-mobile .ambient-img-layer { will-change: transform; }

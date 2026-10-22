@@ -8,6 +8,7 @@
 
 const QUEUE = 'riff_library_queue'; // device only (bridge.js DEVICE_ONLY)
 const NAMES = 'riff_library_names'; // device only: our names for the songs the library knows, by "platform:id"
+const LIKES_QUEUED = 'riff_library_likes_queued'; // device only: this phone's old likes went into the queue
 const CATALOG = '/data/library/catalog.json';
 const TRACKS = '/data/tracks';
 const MAX_AGE = 60 * 24 * 3600 * 1000; // a song nobody can get to the PC is dropped from the queue after 60 days
@@ -202,6 +203,12 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
   };
   let soonTimer = null;
   const soon = () => { clearTimeout(soonTimer); soonTimer = setTimeout(run, 5000); };
+
+  // likes from before the library existed: queued once per phone (a song already in the library is just "ready")
+  if (!localStorage.getItem(LIKES_QUEUED)) {
+    try { for (const t of JSON.parse(localStorage.getItem(FAV)) || []) add(t, 'liked'); } catch (e) {}
+    localStorage.setItem(LIKES_QUEUED, '1');
+  }
 
   setTimeout(run, 8000);
   setInterval(run, 3 * 60 * 1000);

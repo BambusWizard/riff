@@ -384,7 +384,7 @@ const audioBusy = () => [...document.querySelectorAll('audio')].some((a) => !a.p
 // ---- web build: library sync. Likes, playlists, history and settings follow the personal key ----
 // It is everything app.js keeps under devsize_* / riff_* in localStorage, minus what belongs to one device.
 const SYNC_META = 'riff_sync_meta'; // { at: server time of the copy we hold, dirty: changes not sent yet }
-const DEVICE_ONLY = /^(riff_proxy_key|riff_sync_meta|riff_debug_log|riff_bg_url|riff_bg_vpath|riff_banner_media|riff_cache_limit_mb|riff_right_panel_width|riff_queue_state|riff_volume|riff_muted|riff_settings_cat|riff_home_pane|riff_search_pos|riff_font_scale|riff_perf_mode|riff_library_queue|riff_library_names|riff_library_url|riff_library_key|devsize_ui_scale)$/;
+const DEVICE_ONLY = /^(riff_proxy_key|riff_sync_meta|riff_debug_log|riff_bg_url|riff_bg_vpath|riff_banner_media|riff_cache_limit_mb|riff_right_panel_width|riff_queue_state|riff_volume|riff_muted|riff_settings_cat|riff_home_pane|riff_search_pos|riff_font_scale|riff_perf_mode|riff_library_queue|riff_library_names|riff_library_url|riff_library_key|riff_library_likes_queued|devsize_ui_scale)$/;
 const synced = (k) => /^(devsize_|riff_)/.test(k) && !DEVICE_ONLY.test(k);
 let syncPull = null;
 if (!Capacitor.isNativePlatform() && RIFF_PROXY_URL) {

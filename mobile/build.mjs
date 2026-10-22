@@ -1,6 +1,6 @@
 // Builds the iOS web bundle into www/: Riff's desktop frontend + server.js running in-app.
 import { build } from 'esbuild';
-import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -69,4 +69,10 @@ html = html
   .replace(/(<(?:script|link)\b[^>]*?\b(?:src|href)=")((?!https?:|\/\/|data:)[^"?#]+\.(?:js|css))"/g, `$1$2?v=${VERSION}"`);
 writeFileSync(join(out, 'index.html'), html);
 writeFileSync(join(out, 'version.json'), JSON.stringify({ version: VERSION }));
+
+// service worker: everything the page loads at start, so the Home Screen app opens offline (vendor/ is cached on first use)
+const shell = new Set(['index.html', ...[...html.matchAll(/\b(?:src|href)="((?!https?:|\/\/|data:)[^"#]+)"/g)].map((m) => m[1])]);
+for (const dir of ['assets', 'pwa']) for (const f of readdirSync(join(out, dir))) shell.add(`${dir}/${f}`);
+writeFileSync(join(out, 'sw.js'), readFileSync(join(root, 'mobile', 'sw.js'), 'utf8')
+  .replace('__RIFF_VERSION__', VERSION).replace('__RIFF_SHELL__', JSON.stringify([...shell])));
 console.log('www/ ready');

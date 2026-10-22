@@ -337,6 +337,8 @@ if (!Capacitor.isNativePlatform() && RIFF_PROXY_URL) {
 // ---- web build: pick up a new deploy without reinstalling the Home Screen app ----
 // (removing the app from the Home Screen also wipes its likes, playlists and access key)
 if (!Capacitor.isNativePlatform()) {
+  // sw.js keeps this build's files on the phone, so the Home Screen app also opens without internet
+  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch((e) => console.warn('[sw]', e.message));
   const TRIED = 'riff_update_tried';
   let pending = null;
   const apply = () => {

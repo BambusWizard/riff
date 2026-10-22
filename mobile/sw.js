@@ -4,6 +4,11 @@ const VERSION = '__RIFF_VERSION__';
 const SHELL = __RIFF_SHELL__;
 const CACHE = `riff-${VERSION}`;
 const FONTS = /^https:\/\/fonts\.(googleapis|gstatic)\.com$/;
+// covers (YouTube, SoundCloud, Yandex...) are kept across versions, so downloaded songs show them offline.
+// Colour extraction loads covers with CORS, plain <img> without; the two answers can't stand in for each other
+const COVERS = 'covers';
+const COVERS_CORS = 'covers-cors';
+const MAX_COVERS = 1500;
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
@@ -24,8 +29,12 @@ const fromNetwork = (req, ms) => new Promise((resolve, reject) => {
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   const url = new URL(req.url);
+  if (req.method === 'GET' && req.destination === 'image' && url.origin !== location.origin && url.protocol === 'https:') {
+    e.respondWith(cover(req));
+    return;
+  }
   const fonts = FONTS.test(url.origin);
-  if (req.method !== 'GET' || (url.origin !== location.origin && !fonts)) return; // proxy, streams, covers: untouched
+  if (req.method !== 'GET' || (url.origin !== location.origin && !fonts)) return; // proxy and streams: untouched
   if (url.pathname.endsWith('/version.json') || req.headers.has('range')) return; // the update check must always ask the server; media seeks go straight through
 
   // the page itself: newest from the network, the saved one when offline. ?v= only busts the browser cache
@@ -40,3 +49,23 @@ self.addEventListener('fetch', (e) => {
     return r;
   })));
 });
+
+let trimTimer = null;
+const trim = (name) => {
+  clearTimeout(trimTimer);
+  trimTimer = setTimeout(async () => {
+    const c = await caches.open(name);
+    const keys = await c.keys(); // oldest first
+    await Promise.all(keys.slice(0, Math.max(0, keys.length - MAX_COVERS)).map((k) => c.delete(k)));
+  }, 5000);
+};
+
+async function cover(req) {
+  const name = req.mode === 'cors' ? COVERS_CORS : COVERS;
+  const c = await caches.open(name);
+  const hit = await c.match(req);
+  if (hit) return hit;
+  const r = await fetch(req);
+  if (r.ok || r.type === 'opaque') { c.put(req, r.clone()).then(() => trim(name), () => {}); }
+  return r;
+}

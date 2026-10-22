@@ -54,7 +54,10 @@ cpSync(join(root, 'mobile', 'mobile-ui.js'), join(out, 'mobile-ui.js'));
 let html = readFileSync(join(root, 'index.html'), 'utf8');
 html = html
   .replace('<meta name="viewport"', '<meta name="viewport-desktop"')
-  .replace('<head>', '<head>\n  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">'
+  // the phone layout hangs off html.is-mobile; bridge.js sets it too, but it loads at the end of <body>, and iOS
+  // may paint the page before that: the desktop title bar (minimize/close) flashes. Set it before the first paint
+  .replace('<head>', '<head>\n  <script>document.documentElement.classList.add(\'is-mobile\')</script>'
+    + '\n  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">'
     // web build: "Add to Home Screen" opens it full screen like an app. The status bar is "black", not
     // "black-translucent": with the translucent one iOS leaves a black strip under the tab bar
     + '\n  <link rel="manifest" href="pwa/manifest.webmanifest">\n  <link rel="apple-touch-icon" href="pwa/icon-180.png">'

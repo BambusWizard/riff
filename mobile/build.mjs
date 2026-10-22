@@ -58,11 +58,12 @@ html = html
   // may paint the page before that: the desktop title bar (minimize/close) flashes. Set it before the first paint
   .replace('<head>', '<head>\n  <script>document.documentElement.classList.add(\'is-mobile\')</script>'
     + '\n  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">'
-    // web build: "Add to Home Screen" opens it full screen like an app. The status bar is "black", not
-    // "black-translucent": with the translucent one iOS leaves a black strip under the tab bar
+    // web build: "Add to Home Screen" opens it full screen like an app. The status bar is "black-translucent":
+    // the app runs under the camera cutout (the blurred cover background shows there, --safe-top keeps the
+    // header clear of it). This mode once left a black strip under the tab bar; mobile.css paints below the bar
     + '\n  <link rel="manifest" href="pwa/manifest.webmanifest">\n  <link rel="apple-touch-icon" href="pwa/icon-180.png">'
     + '\n  <meta name="apple-mobile-web-app-capable" content="yes">\n  <meta name="mobile-web-app-capable" content="yes">'
-    + '\n  <meta name="apple-mobile-web-app-status-bar-style" content="black">\n  <meta name="apple-mobile-web-app-title" content="Riff">'
+    + '\n  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">\n  <meta name="apple-mobile-web-app-title" content="Riff">'
     + '\n  <meta name="theme-color" content="#121214">'
     // bridge.js compares it with its own version: a stale page that got newer scripts reloads itself
     + `\n  <meta name="riff-build" content="${VERSION}">`)

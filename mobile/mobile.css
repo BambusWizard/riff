@@ -615,3 +615,8 @@ html.is-mobile .palette-note { display: block; margin: 2px 0 8px; font-size: cal
 html.is-mobile #setting-palette-style.is-disabled .m3-dropdown { opacity: .45; pointer-events: none; }
 html.is-mobile .sidebar .nav-badge[data-big="1"] { font-size: 0 !important; }
 html.is-mobile .sidebar .nav-badge[data-big="1"]::after { content: '99+'; font-size: 10px; }
+
+/* status bar is translucent (build.mjs): the page runs under the camera cutout. Whatever iOS leaves below the
+   tab bar in that mode gets the bar's colour instead of a black strip, and the page canvas matches the app */
+html.is-mobile { background: var(--md-sys-color-background-solid, #121214); }
+html.is-mobile .sidebar { box-shadow: 0 120px 0 0 var(--md-sys-color-surface-container-solid, #1E1F22) !important; }

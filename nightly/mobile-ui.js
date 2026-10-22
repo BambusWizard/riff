@@ -14,11 +14,7 @@
   Engine.prototype.init = function (audioElement) { this.__element = audioElement || this.__element; };
   // iOS ignores element.volume (hardware buttons own it); mute still works
   Engine.prototype._applyMasterVolume = function () {
-    const a = this.__element;
-    if (!a) return;
-    const muted = !!this.isMuted || this.volume === 0;
-    if (a.__riffHold) a.__riffHold.muted = muted; // a song held silently in the background (bridge.js) stays silent
-    else a.muted = muted;
+    if (this.__element) this.__element.muted = !!this.isMuted || this.volume === 0;
   };
 })();
 

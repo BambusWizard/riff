@@ -98,6 +98,34 @@ applyRowBadges();
   panel.addEventListener('touchend', endDrag);
   panel.addEventListener('touchcancel', endDrag);
 
+  // the artist under the title in Now Playing: the sheet closes so the artist page behind it is seen; with
+  // several artists ("A, B feat. C") a menu asks which one first. Runs before app.js's own click handler
+  const npArtist = document.getElementById('right-panel-artist');
+  if (npArtist) {
+    const open = (name) => { closeSheet(); if (window.RiffCore) window.RiffCore.openArtist(name); };
+    npArtist.addEventListener('click', (e) => {
+      const st = window.RiffCore && window.RiffCore.state;
+      const full = st && st.currentTrack && st.currentTrack.artist;
+      if (!full) return;
+      e.stopImmediatePropagation();
+      const names = [...new Set(String(full).replace(/ /g, ' ')
+        .split(/\s*(?:,|;|&|\bfeat\b\.?|\bft\b\.?|\s[xX×]\s)\s*/i)
+        .map((n) => n.trim()).filter(Boolean))];
+      if (names.length < 2) { open(full); return; }
+      const sheet = document.createElement('div');
+      sheet.className = 'row-sheet';
+      sheet.innerHTML = '<div class="row-sheet-card"><div class="row-sheet-title">Artists</div><div class="row-sheet-artist"></div>'
+        + names.map((n, i) => `<button type="button" data-i="${i}"></button>`).join('') + '</div>';
+      sheet.querySelectorAll('button[data-i]').forEach((b) => { b.textContent = names[b.dataset.i]; });
+      sheet.addEventListener('click', (ev) => {
+        const b = ev.target.closest('button[data-i]');
+        if (b || !ev.target.closest('.row-sheet-card')) sheet.remove();
+        if (b) open(names[b.dataset.i]);
+      });
+      document.body.appendChild(sheet);
+    }, true);
+  }
+
   // custom background: rebuild its file URL from the app-relative path (it changes on every reinstall)
   const fixBackground = async () => {
     const vpath = localStorage.getItem('riff_bg_vpath');

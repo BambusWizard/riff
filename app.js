@@ -15590,6 +15590,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     refreshBackground: () => updateCustomBg(),
     next: () => playNext(),
     prev: () => playPrev(true),
+    openArtist: (name) => openArtistProfile(name),
   };
   window.dispatchEvent(new Event('riff:ready'));
 

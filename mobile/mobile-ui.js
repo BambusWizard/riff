@@ -373,7 +373,11 @@ applyRowBadges();
   if (bio) bio.addEventListener('click', () => bio.classList.toggle('expanded'));
 
   // tab bar counters: hide the zeros
-  const markZero = (badge) => badge.classList.toggle('is-zero', !badge.textContent.trim() || badge.textContent.trim() === '0');
+  const markZero = (badge) => {
+    const t = badge.textContent.trim();
+    badge.classList.toggle('is-zero', !t || t === '0');
+    badge.dataset.big = Number(t) > 99 ? '1' : ''; // shown as "99+" (mobile.css), so the badge stays icon-sized
+  };
   document.querySelectorAll('.sidebar .nav-badge').forEach((badge) => {
     markZero(badge);
     new MutationObserver(() => markZero(badge)).observe(badge, { childList: true, characterData: true, subtree: true });

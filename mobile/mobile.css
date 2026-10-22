@@ -125,7 +125,14 @@ html.is-mobile .rail-icon-btn {
 }
 /* counters only when there is something to count (mobile-ui.js marks zeros), tucked onto the icon's corner */
 html.is-mobile .sidebar .nav-badge.is-zero { display: none !important; }
-html.is-mobile .sidebar .nav-badge { transform: scale(0.85); transform-origin: left bottom; }
+/* Material 3 badge: pinned to the icon's top-right corner (the icon is centred in the pill), so the tab
+   stays visually centred on its icon, not pushed off by a counter at the pill's edge */
+html.is-mobile .sidebar .nav-badge {
+  top: -1px !important; right: auto !important; left: calc(50% + 3px) !important; transform: none !important;
+  min-width: 16px; height: 16px; padding: 0 4px !important; box-sizing: border-box;
+  font-size: 10px !important; line-height: 16px; text-align: center; border-radius: 8px !important;
+  box-shadow: 0 0 0 2px var(--md-sys-color-surface-container-solid, #1E1F22);
+}
 /* one highlight per tab, Material 3 style: a 56x32 pill behind the icon. The buttons themselves never fill
    (desktop gave them a fill too, and iOS keeps :hover after a tap, so a tab showed a circle and an oval) */
 html.is-mobile .nav-item,
@@ -604,3 +611,5 @@ html.is-mobile .tabbar-chip.active { background: var(--md-sys-color-secondary-co
 
 html.is-mobile .palette-note { display: block; margin: 2px 0 8px; font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline); }
 html.is-mobile #setting-palette-style.is-disabled .m3-dropdown { opacity: .45; pointer-events: none; }
+html.is-mobile .sidebar .nav-badge[data-big="1"] { font-size: 0 !important; }
+html.is-mobile .sidebar .nav-badge[data-big="1"]::after { content: '99+'; font-size: 10px; }

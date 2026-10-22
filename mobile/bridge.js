@@ -364,6 +364,10 @@ if (!Capacitor.isNativePlatform()) {
       if (version && version !== RIFF_VERSION) { pending = version; apply(); }
     } catch (e) {}
   };
+  // the page and its scripts come from different builds (a page the browser kept + scripts it didn't):
+  // load the page again right away instead of running a mixed-up UI until the next check
+  const pageBuild = document.querySelector('meta[name="riff-build"]');
+  if (!pageBuild || pageBuild.content !== RIFF_VERSION) { pending = RIFF_VERSION; apply(); }
   document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
   document.addEventListener('pause', apply, true); // media events don't bubble
   setInterval(check, 15 * 60 * 1000);

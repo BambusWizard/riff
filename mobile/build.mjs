@@ -60,7 +60,9 @@ html = html
     + '\n  <link rel="manifest" href="pwa/manifest.webmanifest">\n  <link rel="apple-touch-icon" href="pwa/icon-180.png">'
     + '\n  <meta name="apple-mobile-web-app-capable" content="yes">\n  <meta name="mobile-web-app-capable" content="yes">'
     + '\n  <meta name="apple-mobile-web-app-status-bar-style" content="black">\n  <meta name="apple-mobile-web-app-title" content="Riff">'
-    + '\n  <meta name="theme-color" content="#121214">')
+    + '\n  <meta name="theme-color" content="#121214">'
+    // bridge.js compares it with its own version: a stale page that got newer scripts reloads itself
+    + `\n  <meta name="riff-build" content="${VERSION}">`)
   .replace('<link rel="stylesheet" href="styles.css">', '<link rel="stylesheet" href="styles.css">\n  <link rel="stylesheet" href="mobile.css">')
   .replace('<script src="audio-engine.js"></script>', '<script src="mobile-bridge.js"></script>\n  <script src="audio-engine.js"></script>')
   .replace('<script src="app.js"></script>', '<script src="app.js"></script>\n  <script src="mobile-ui.js"></script>')

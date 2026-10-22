@@ -39,7 +39,8 @@ self.addEventListener('fetch', (e) => {
 
   // the page itself: newest from the network, the saved one when offline. ?v= only busts the browser cache
   if (req.mode === 'navigate') {
-    e.respondWith(fromNetwork(req, 4000).catch(() => caches.match('index.html').then((r) => r || Response.error())));
+    // no-cache: GitHub Pages lets the browser keep the page for 10 minutes, and an old page with new scripts breaks
+    e.respondWith(fromNetwork(new Request(req.url, { cache: 'no-cache', credentials: 'same-origin' }), 4000).catch(() => caches.match('index.html').then((r) => r || Response.error())));
     return;
   }
 

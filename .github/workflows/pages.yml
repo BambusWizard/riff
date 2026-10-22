@@ -1,19 +1,25 @@
 name: Web build (GitHub Pages)
 
-# Builds the browser version of the phone layout (www/) and publishes it to the gh-pages branch.
+# Builds the browser version of the phone layout (www/) and publishes it to the gh-pages branch, in two channels:
+#   stable  (branch "stable")  -> site root,  e.g. https://<user>.github.io/riff/
+#   nightly (branch "web-pwa") -> nightly/,   e.g. https://<user>.github.io/riff/nightly/
+# Each run replaces only its own channel's files. Settings -> Storage -> "Nightly builds" switches the app between
+# them (same origin, so likes, playlists and the access key are shared). Ship nightly as stable: merge web-pwa into
+# stable and push.
 # One-time setup: Settings -> Pages -> Source: "Deploy from a branch", branch gh-pages / (root);
 # The proxy (web/worker.js) runs on Cloudflare Pages: riff-proxy.pages.dev. Some phones can't resolve *.workers.dev.
 on:
   push:
-    branches: [web-pwa]
+    branches: [web-pwa, stable]
     paths-ignore: ['**.md', 'LICENSE']
   workflow_dispatch:
 
 permissions:
   contents: write
 
+# a newer push to the same branch replaces an older run; the two channels can run side by side (publish retries)
 concurrency:
-  group: pages-build
+  group: pages-build-${{ github.ref_name }}
   cancel-in-progress: true
 
 jobs:
@@ -21,6 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: '1' # desktop-only dev dependency, not needed here
+      RIFF_CHANNEL: ${{ github.ref_name == 'stable' && 'stable' || 'nightly' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -42,10 +49,25 @@ jobs:
 
       - name: Publish to gh-pages
         run: |
-          cd www
-          git init -q -b gh-pages
-          git config user.name "github-actions[bot]"
-          git config user.email "41898299+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -qm "Web build of ${GITHUB_SHA::7}"
-          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
+          REPO="https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git"
+          # the other channel may publish at the same moment: start again from the newest gh-pages if the push loses
+          for attempt in 1 2 3 4 5; do
+            rm -rf site
+            git clone -q --depth 1 --branch gh-pages "$REPO" site || { mkdir site; git -C site init -q -b gh-pages; }
+            cd site
+            git config user.name "github-actions[bot]"
+            git config user.email "41898299+github-actions[bot]@users.noreply.github.com"
+            if [ "$RIFF_CHANNEL" = stable ]; then
+              find . -mindepth 1 -maxdepth 1 ! -name .git ! -name nightly -exec rm -rf {} +
+              cp -R ../www/. .
+            else
+              rm -rf nightly && mkdir nightly && cp -R ../www/. nightly/
+            fi
+            touch .nojekyll
+            git add -A
+            git commit -qm "$RIFF_CHANNEL: web build of ${GITHUB_SHA::7}" || { echo "nothing changed"; exit 0; }
+            if git push -q "$REPO" HEAD:gh-pages; then exit 0; fi
+            cd ..
+            sleep $((attempt * 5))
+          done
+          exit 1

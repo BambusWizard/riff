@@ -2,7 +2,10 @@
 // build.mjs fills in VERSION and SHELL (every file of this build, with the same ?v= the page asks for).
 const VERSION = '__RIFF_VERSION__';
 const SHELL = __RIFF_SHELL__;
-const CACHE = `riff-${VERSION}`;
+const CHANNEL = '__RIFF_CHANNEL__';
+// per channel: stable's worker (scope /riff/) must not throw away nightly's files (/riff/nightly/) or back
+const PREFIX = `riff-${CHANNEL}-`;
+const CACHE = `${PREFIX}${VERSION}`;
 const FONTS = /^https:\/\/fonts\.(googleapis|gstatic)\.com$/;
 // covers (YouTube, SoundCloud, Yandex...) are kept across versions, so downloaded songs show them offline.
 // Colour extraction loads covers with CORS, plain <img> without; the two answers can't stand in for each other
@@ -21,7 +24,8 @@ self.addEventListener('install', (e) => {
 
 self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys()
-    .then((keys) => Promise.all(keys.filter((k) => k.startsWith('riff-') && k !== CACHE).map((k) => caches.delete(k))))
+    .then((keys) => Promise.all(keys.filter((k) => k.startsWith('riff-') && k !== CACHE
+      && (k.startsWith(PREFIX) || !/^riff-(stable|nightly|local)-/.test(k))).map((k) => caches.delete(k)))) // own old builds + pre-channel caches
     .then(() => self.clients.claim()));
 });
 
@@ -40,7 +44,8 @@ self.addEventListener('fetch', (e) => {
   }
   const fonts = FONTS.test(url.origin);
   if (req.method !== 'GET' || (url.origin !== location.origin && !fonts)) return; // proxy and streams: untouched
-  if (url.pathname.endsWith('/version.json') || req.headers.has('range')) return; // the update check must always ask the server; media seeks go straight through
+  if (url.pathname.endsWith('/version.json') || req.headers.has('range')) return;
+  if (CHANNEL === 'stable' && url.pathname.includes('/nightly/')) return; // nightly's own worker (or the network) serves it // the update check must always ask the server; media seeks go straight through
 
   // the page itself: newest from the network, the saved one when offline. ?v= only busts the browser cache
   if (req.mode === 'navigate') {

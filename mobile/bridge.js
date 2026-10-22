@@ -369,7 +369,7 @@ if (!Capacitor.isNativePlatform()) {
   if (logo) {
     const tag = document.createElement('span');
     tag.className = 'logo-build';
-    tag.textContent = `build ${RIFF_VERSION}`;
+    tag.textContent = `${RIFF_CHANNEL === 'nightly' ? 'nightly' : 'build'} ${RIFF_VERSION}`;
     logo.appendChild(tag);
   }
   // sw.js keeps this build's files on the phone, so the Home Screen app also opens without internet

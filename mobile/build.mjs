@@ -11,6 +11,9 @@ const shim = (n) => join(root, 'mobile', 'shims', `${n}.js`);
 // every build has its own version; file URLs carry it so a Home Screen app never mixes old and new files,
 // and the web build compares it with version.json to notice a new deploy (bridge.js)
 const VERSION = (process.env.GITHUB_SHA || '').slice(0, 7) || Date.now().toString(36);
+// web build channel: "stable" is served at the site root, "nightly" from nightly/ next to it (pages.yml).
+// Both share one origin, so likes, playlists and the access key are the same in both. Empty = local build
+const CHANNEL = ['stable', 'nightly'].includes(process.env.RIFF_CHANNEL) ? process.env.RIFF_CHANNEL : '';
 
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
@@ -39,7 +42,7 @@ await build({
     electron: shim('electron'), dns: shim('dns'), net: shim('net'), path: 'path-browserify', events: 'events', buffer: 'buffer',
   },
   inject: [join(root, 'mobile', 'globals.js')],
-  define: { 'process.env.NODE_ENV': '"production"', 'require.main': 'undefined', RIFF_PROXY_URL: JSON.stringify((process.env.RIFF_PROXY_URL || '').trim().replace(/\/+$/, '')), RIFF_VERSION: JSON.stringify(VERSION) },
+  define: { 'process.env.NODE_ENV': '"production"', 'require.main': 'undefined', RIFF_PROXY_URL: JSON.stringify((process.env.RIFF_PROXY_URL || '').trim().replace(/\/+$/, '')), RIFF_VERSION: JSON.stringify(VERSION), RIFF_CHANNEL: JSON.stringify(CHANNEL) },
   plugins: [swapLocal],
   logLevel: 'warning',
 });
@@ -57,6 +60,10 @@ html = html
   // the phone layout hangs off html.is-mobile; bridge.js sets it too, but it loads at the end of <body>, and iOS
   // may paint the page before that: the desktop title bar (minimize/close) flashes. Set it before the first paint
   .replace('<head>', '<head>\n  <script>document.documentElement.classList.add(\'is-mobile\')</script>'
+    // the Home Screen icon always opens stable; whoever switched to nightly in Settings is sent on before
+    // anything loads (and back again when they switch it off)
+    + (CHANNEL ? `\n  <script>(function(){try{var w=localStorage.getItem('riff_channel')==='nightly'?'nightly':'stable';`
+      + `if(w!=='${CHANNEL}')location.replace('${CHANNEL === 'stable' ? 'nightly/' : '../'}')}catch(e){}})()</script>` : '')
     + '\n  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">'
     // web build: "Add to Home Screen" opens it full screen like an app. The status bar is "black-translucent":
     // the app runs under the camera cutout (the blurred cover background shows there, --safe-top keeps the
@@ -66,7 +73,8 @@ html = html
     + '\n  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">\n  <meta name="apple-mobile-web-app-title" content="Riff">'
     + '\n  <meta name="theme-color" content="#121214">'
     // bridge.js compares it with its own version: a stale page that got newer scripts reloads itself
-    + `\n  <meta name="riff-build" content="${VERSION}">`)
+    + `\n  <meta name="riff-build" content="${VERSION}">`
+    + `\n  <meta name="riff-channel" content="${CHANNEL}">`)
   // loading screen until app.js is ready (and while a newer build loads); bridge.js hides it on riff:ready
   .replace('</head>', '  <style>#riff-splash{position:fixed;inset:0;z-index:2147483000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#121214;color:#e6e1e5;font:500 15px -apple-system,system-ui,sans-serif;transition:opacity .25s ease}'
     + '#riff-splash.gone{opacity:0;pointer-events:none}#riff-splash i{width:14px;height:14px;border-radius:50%;background:#d0bcff;animation:riff-pulse 1s ease-in-out infinite alternate}'
@@ -93,5 +101,5 @@ writeFileSync(join(out, 'version.json'), JSON.stringify({ version: VERSION }));
 const shell = new Set(['index.html', ...[...html.matchAll(/\b(?:src|href)="((?!https?:|\/\/|data:)[^"#]+)"/g)].map((m) => m[1])]);
 for (const dir of ['assets', 'pwa']) for (const f of readdirSync(join(out, dir))) shell.add(`${dir}/${f}`);
 writeFileSync(join(out, 'sw.js'), readFileSync(join(root, 'mobile', 'sw.js'), 'utf8')
-  .replace('__RIFF_VERSION__', VERSION).replace('__RIFF_SHELL__', JSON.stringify([...shell])));
+  .replace('__RIFF_VERSION__', VERSION).replace('__RIFF_CHANNEL__', CHANNEL || 'local').replace('__RIFF_SHELL__', JSON.stringify([...shell])));
 console.log('www/ ready');

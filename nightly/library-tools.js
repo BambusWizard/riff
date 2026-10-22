@@ -1,10 +1,1 @@
-function dedupeTracks(tracks, same) {
-  if (!Array.isArray(tracks)) return [];
-  const kept = [];
-  for (const track of tracks) {
-    if (!kept.some((other) => same(other, track))) kept.push(track);
-  }
-  return kept;
-}
-
-if (typeof module !== 'undefined') module.exports = { dedupeTracks };
+function dedupeTracks(r,f){if(!Array.isArray(r))return[];const e=[];for(const o of r)e.some(n=>f(n,o))||e.push(o);return e}typeof module<"u"&&(module.exports={dedupeTracks});

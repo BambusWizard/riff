@@ -1,13 +1,1 @@
-const RTL_RE = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/;
-const LETTER_RE = /\p{L}/u;
-
-function isRtlText(text) {
-  const clean = String(text || '').replace(/<[^>]*>/g, '');
-  for (const ch of clean) {
-    if (!LETTER_RE.test(ch)) continue;
-    return RTL_RE.test(ch);
-  }
-  return false;
-}
-
-if (typeof module !== 'undefined') module.exports = { isRtlText };
+const RTL_RE=/[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/,LETTER_RE=new RegExp("\\p{L}","u");function isRtlText(e){const n=String(e||"").replace(/<[^>]*>/g,"");for(const t of n)if(LETTER_RE.test(t))return RTL_RE.test(t);return!1}typeof module<"u"&&(module.exports={isRtlText});

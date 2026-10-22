@@ -433,3 +433,4 @@ html.is-mobile .artist-bio-snippet {
 html.is-mobile .artist-bio-snippet.expanded { -webkit-line-clamp: unset !important; line-clamp: unset !important; }
 html.is-mobile .artist-actions-bar { width: 100% !important; justify-content: center !important; margin-top: 4px !important; }
 html.is-mobile #btn-play-artist-tracks { width: 100% !important; justify-content: center !important; height: 44px !important; }
+html.is-mobile .platform-btn-ym { display: flex !important; }

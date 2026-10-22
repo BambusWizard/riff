@@ -1503,6 +1503,25 @@ async function searchYtmTracks(query, limit = 16) {
   }
 }
 
+// Yandex Music search; on the web build the proxy routes it through Russia and adds the account's token
+async function yandexSearch(query, limit) {
+  const data = await fetchItunesJson(`https://api.music.yandex.net/search?type=track&page=0&text=${encodeURIComponent(query)}`);
+  const results = ((((data || {}).result || {}).tracks || {}).results) || [];
+  return results.filter(t => t && t.available !== false).slice(0, limit).map(t => {
+    const album = (t.albums || [])[0] || {};
+    const cover = t.coverUri || album.coverUri || '';
+    return {
+      id: `ym${t.id}`,
+      title: t.version ? `${t.title} (${t.version})` : t.title,
+      artist: (t.artists || []).map(a => a.name).filter(Boolean).join(', '),
+      duration: t.durationMs ? Math.round(t.durationMs / 1000) : 0,
+      thumbnail: cover ? `https://${cover.replace('%%', '400x400')}` : '',
+      url: album.id ? `https://music.yandex.ru/album/${album.id}/track/${t.id}` : `https://music.yandex.ru/track/${t.id}`,
+      platform: 'yandex'
+    };
+  });
+}
+
 async function handleSearch(req, res, query, platform = 'youtube', limit = 20) {
   const cacheKey = `${platform}:${query}:${limit}`;
   while (true) {
@@ -1531,6 +1550,17 @@ async function handleSearch(req, res, query, platform = 'youtube', limit = 20) {
     return res.end(JSON.stringify(body));
   };
   try {
+  if (platform === 'yandex') {
+    try {
+      const tracks = await yandexSearch(query, limit);
+      const result = { success: true, tracks };
+      searchCache.set(cacheKey, result);
+      return sendResponse(200, result);
+    } catch (e) {
+      searchCache.delete(cacheKey);
+      return sendResponse(502, { success: false, error: `Yandex Music search failed (${e.message})` });
+    }
+  }
   if (platform === 'youtube') {
     try {
       const directTracks = await directYoutubeSearch(query);

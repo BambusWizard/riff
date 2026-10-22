@@ -162,8 +162,49 @@ async function soundcloudAudio(pageUrl) {
 }
 
 // Resolve anything yt-dlp would accept as a target: a URL, ytsearch1:, scsearch1:.
+// MD5 (RFC 1321), only for signing Yandex Music download links
+function md5(str) {
+  const bytes = new TextEncoder().encode(str);
+  const n = ((bytes.length + 8) >> 6) + 1;
+  const w = new Uint32Array(n * 16);
+  for (let i = 0; i < bytes.length; i++) w[i >> 2] |= bytes[i] << ((i % 4) * 8);
+  w[bytes.length >> 2] |= 0x80 << ((bytes.length % 4) * 8);
+  w[n * 16 - 2] = bytes.length * 8;
+  const K = Array.from({ length: 64 }, (_, i) => Math.floor(Math.abs(Math.sin(i + 1)) * 2 ** 32) >>> 0);
+  const S = [7, 12, 17, 22, 5, 9, 14, 20, 4, 11, 16, 23, 6, 10, 15, 21];
+  let a0 = 0x67452301, b0 = 0xefcdab89, c0 = 0x98badcfe, d0 = 0x10325476;
+  for (let off = 0; off < w.length; off += 16) {
+    let a = a0, b = b0, c = c0, d = d0;
+    for (let i = 0; i < 64; i++) {
+      const r = i >> 4;
+      const f = r === 0 ? (b & c) | (~b & d) : r === 1 ? (d & b) | (~d & c) : r === 2 ? b ^ c ^ d : c ^ (b | ~d);
+      const g = r === 0 ? i : r === 1 ? (5 * i + 1) % 16 : r === 2 ? (3 * i + 5) % 16 : (7 * i) % 16;
+      const x = (a + f + K[i] + w[off + g]) >>> 0;
+      const sh = S[r * 4 + (i % 4)];
+      a = d; d = c; c = b;
+      b = (b + ((x << sh) | (x >>> (32 - sh)))) >>> 0;
+    }
+    a0 = (a0 + a) >>> 0; b0 = (b0 + b) >>> 0; c0 = (c0 + c) >>> 0; d0 = (d0 + d) >>> 0;
+  }
+  return [a0, b0, c0, d0].map((v) => [0, 8, 16, 24].map((s) => ((v >>> s) & 255).toString(16).padStart(2, '0')).join('')).join('');
+}
+
+// Yandex Music: the best full MP3 (the proxy adds the account's token; without Plus only previews exist)
+async function yandexAudio(trackId) {
+  const info = await (await globalThis.__riffFetch(`https://api.music.yandex.net/tracks/${trackId}/download-info`)).json();
+  const options = (Array.isArray(info.result) ? info.result : []).filter((x) => x.codec === 'mp3' && !x.preview).sort((a, b) => b.bitrateInKbps - a.bitrateInKbps);
+  if (!options.length) throw new Error(`Yandex Music has no full track for ${trackId} (${(info.result && info.result.message) || 'token or Plus missing'})`);
+  const xml = await (await globalThis.__riffFetch(options[0].downloadInfoUrl)).text();
+  const tag = (t) => (xml.match(new RegExp(`<${t}>([^<]*)</${t}>`)) || [])[1] || '';
+  const path = tag('path');
+  const sign = md5(`XGRlBW9FXlekgbPrRHuSiA${path.slice(1)}${tag('s')}`);
+  return { url: `https://${tag('host')}/get-mp3/${sign}/${tag('ts')}${path}`, ext: 'mp3' };
+}
+
 async function resolveAudio(target) {
   const s = String(target);
+  const ym = s.match(/music\.yandex\.[a-z]+\/(?:album\/\d+\/)?track\/(\d+)/);
+  if (ym) return yandexAudio(ym[1]);
   let m = s.match(/^(yt|sc)search\d*:(.*)$/);
   if (m) {
     const hit = (m[1] === 'sc' ? await soundcloudSearch(m[2], 1) : await youtubeSearch(m[2], 1))[0];
@@ -240,4 +281,4 @@ async function playlist(pageUrl, limit = 500) {
   throw new Error(`unsupported link ${s}`);
 }
 
-module.exports = { youtubeSearch, ytMusicSearch, soundcloudSearch, resolveAudio, playlist };
+module.exports = { youtubeSearch, ytMusicSearch, soundcloudSearch, resolveAudio, playlist, md5 };

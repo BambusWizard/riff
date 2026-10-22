@@ -7577,3 +7577,6 @@ body.m3-cover-on .m3c-wrap > img { visibility: hidden; }
 body.m3-cover-on .m3c-canvas { display: block; }
 body.m3-cover-on .artwork-wrapper { overflow: visible !important; background: transparent !important; }
 body.m3-cover-on .artwork-fallback { display: none !important; }
+
+/* Yandex Music plays only through the phone build's extractor (mobile/mobile.css shows the button) */
+.platform-btn-ym { display: none !important; }

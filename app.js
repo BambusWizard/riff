@@ -7925,18 +7925,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 
   function setPlatform(platform, triggerSearch = true) {
-    if (!['youtube', 'ytmusic', 'soundcloud'].includes(platform)) platform = 'youtube';
+    if (!['youtube', 'ytmusic', 'soundcloud', 'yandex'].includes(platform)) platform = 'youtube';
     state.platform = platform;
     localStorage.setItem('riff_platform', platform);
 
     if (el.platformYt) el.platformYt.classList.toggle('active', platform === 'youtube');
     if (el.platformYtm) el.platformYtm.classList.toggle('active', platform === 'ytmusic');
     if (el.platformSc) el.platformSc.classList.toggle('active', platform === 'soundcloud');
+    const platformYm = document.getElementById('platform-ym');
+    if (platformYm) platformYm.classList.toggle('active', platform === 'yandex');
 
     const select = document.getElementById('select-engine-api');
     if (select) select.value = platform;
     const label = document.getElementById('engine-api-label');
-    const nameMap = { youtube: 'YouTube', ytmusic: 'YouTube Music', soundcloud: 'SoundCloud' };
+    const nameMap = { youtube: 'YouTube', ytmusic: 'YouTube Music', soundcloud: 'SoundCloud', yandex: 'Yandex Music' };
     if (label) label.textContent = nameMap[platform] || 'YouTube';
     const menu = document.getElementById('engine-api-menu');
     if (menu) {
@@ -7956,6 +7958,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (el.platformYt) el.platformYt.addEventListener('click', () => setPlatform('youtube'));
   if (el.platformYtm) el.platformYtm.addEventListener('click', () => setPlatform('ytmusic'));
   if (el.platformSc) el.platformSc.addEventListener('click', () => setPlatform('soundcloud'));
+  const platformYmBtn = document.getElementById('platform-ym');
+  if (platformYmBtn) platformYmBtn.addEventListener('click', () => setPlatform('yandex'));
 
   const engineApiDropdown = document.getElementById('engine-api-dropdown');
   const engineApiTrigger = document.getElementById('engine-api-trigger');

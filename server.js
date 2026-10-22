@@ -12,6 +12,7 @@ const net = require('net');
 const PORT = 38472;
 const { DATA_DIR, CACHE_DIR, CUSTOM_LYRICS_DIR, LYRICS_DIR, THUMBNAILS_DIR, METADATA_PATH, LIBRARY_DIR, LIBRARY_PATH, ytDlpCommand, resolveDownloadDir, resolveBinary } = require('./platform');
 const logger = require('./logger');
+const { versionOf } = require('./library/names');
 const { getSystemAudioOutputInfo } = require('./audio-output');
 // iOS can't hand a cross-origin stream to Web Audio, so it plays everything from the disk cache.
 const STREAM_VIA_CACHE = !!require('./platform').STREAM_VIA_CACHE;
@@ -1329,8 +1330,23 @@ async function yandexMatch(title, artist, duration) {
   if (!t) return null;
   const tracks = await yandexSearch(/\s[-–—]\s/.test(t) || !a || t.toLowerCase().includes(a.toLowerCase()) ? t : `${a} ${t}`, 5);
   const d = Number(duration) || 0;
+  // the same version only: "Song (без цензуры)" is not the censored "Song", a remix not the song itself
+  const want = sameVersionKey(title);
   // music videos run a little longer than the album track (intros, outros)
-  return tracks.find(x => !d || !x.duration || Math.abs(x.duration - d) <= 25) || null;
+  return tracks.find(x => (!d || !x.duration || Math.abs(x.duration - d) <= 25) && sameVersionKey(x.title) === want) || null;
+}
+function sameVersionKey(title) {
+  return versionOf(title).version.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+}
+
+// songs cached from a stand-in (Yandex, a SoundCloud search) because their own source failed: the song library
+// (mobile/library-sync.js) replaces them with its own copy
+const SUBSTITUTES_PATH = path.join(DATA_DIR, 'cache-substitutes.json');
+function markSubstitute(cleanId, from) {
+  let subs = {};
+  try { subs = JSON.parse(fs.readFileSync(SUBSTITUTES_PATH, 'utf8')) || {}; } catch (e) {}
+  subs[cleanId] = from;
+  try { fs.writeFileSync(SUBSTITUTES_PATH, JSON.stringify(subs)); } catch (e) {}
 }
 
 // mobile: get a song into the cache from its own source, else Yandex Music, else a full SoundCloud upload
@@ -1342,10 +1358,11 @@ async function cacheTrackWithFallbacks(trackUrl, cleanId, platform, meta) {
     if (ym) {
       try { logger.log('info', `YouTube failed, using Yandex Music: ${ym.artist} - ${ym.title}`); } catch (_) {}
       await downloadTrackToDisk(ym.url, cleanId, 'yandex', meta);
-      if (await findCachedFile(cleanId)) return;
+      if (await findCachedFile(cleanId)) return markSubstitute(cleanId, ym.url);
     }
   }
   await downloadTrackToDisk(`scsearch1:${`${meta.artist || ''} ${meta.title || ''}`.trim()}`, cleanId, 'soundcloud', meta);
+  if (await findCachedFile(cleanId)) markSubstitute(cleanId, 'soundcloud search');
 }
 
 async function prefetchTrack(trackUrl, trackId, platform, meta = null) {

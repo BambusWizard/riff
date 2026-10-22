@@ -268,11 +268,44 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
   try { useCatalog(JSON.parse(fs.readFileSync(CATALOG, 'utf8'))); } catch (e) {}
 
   // ---- playing: the phone's own copy first, then the PC's, then the service (bridge.js asks before stream-info) ----
+  // The phone's copy is wrong when the app had to cache a stand-in (Yandex, a SoundCloud search) because the song's
+  // own source failed (server.js marks those), or, for a version like "без цензуры", when it isn't the library's
+  // file (cached before the stand-ins were marked): then the PC's copy plays and takes its place in the cache
+  const SUBSTITUTES = '/data/cache-substitutes.json';
+  const substitutes = () => { try { return JSON.parse(fs.readFileSync(SUBSTITUTES, 'utf8')) || {}; } catch (e) { return {}; } };
+  const CACHE_EXT = ['opus', 'webm', 'm4a', 'mp3', 'aac']; // what server.js findCachedFile plays
+  const wrongCopy = (song, file, id) => {
+    if (substitutes()[cleanId(id)]) return true;
+    if (!song.version || !song.size) return false;
+    try { return fs.statSync(file).size !== song.size; } catch (e) { return false; }
+  };
+  const replacing = new Set();
+  const replaceCopy = async (song, file, id) => {
+    const key = cleanId(id);
+    if (replacing.has(key) || !CACHE_EXT.includes(song.format)) return;
+    replacing.add(key);
+    try {
+      const r = await pageFetch(`${lastPc.url}/songs/${song.id}/file?k=${encodeURIComponent(lastPc.key)}`);
+      if (!r.ok) throw new Error(`PC ${r.status}`);
+      const data = new Uint8Array(await r.arrayBuffer());
+      if (data.length !== song.size) throw new Error('broke off');
+      try { fs.unlinkSync(file); } catch (e) {}
+      fs.writeFileSync(`${TRACKS}/${key}.${song.format}`, data);
+      const subs = substitutes();
+      if (subs[key]) { delete subs[key]; try { fs.writeFileSync(SUBSTITUTES, JSON.stringify(subs)); } catch (e) {} }
+      log(`library: the cached ${song.artist} - ${song.title} is now the library's copy`);
+    } catch (e) { log(`library: could not replace the cached ${song.title}: ${e.message}`); } finally { replacing.delete(key); }
+  };
   const streamFor = (url) => {
     if (!url.includes('/api/stream-info') || !pcOnline()) return null;
     const q = new URL(url).searchParams;
     const song = bySource.get(`${q.get('platform') || 'youtube'}:${q.get('id')}`);
-    if (!song || !song.ready || localFile({ id: q.get('id') })) return null;
+    if (!song || !song.ready) return null;
+    const local = localFile({ id: q.get('id') });
+    if (local) {
+      if (!wrongCopy(song, local, q.get('id'))) return null;
+      replaceCopy(song, local, q.get('id'));
+    }
     log(`library: playing ${song.artist} - ${song.title} from the PC`);
     const body = JSON.stringify({ success: true, isLocal: false, streamUrl: `${lastPc.url}/songs/${song.id}/file?k=${encodeURIComponent(lastPc.key)}` });
     return new Response(body, { status: 200, headers: { 'Content-Type': 'application/json' } });

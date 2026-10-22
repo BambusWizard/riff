@@ -137,7 +137,9 @@ async function installFfmpeg() {
   if (got !== want) { fs.rmSync(archive, { force: true }); throw new Error('ffmpeg checksum mismatch'); }
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'riff-ffmpeg-'));
   try {
-    await run('tar', ['-xf', archive, '-C', work]);
+    // Windows' own tar (bsdtar) opens zips; a GNU tar earlier in PATH (Git Bash) reads "C:\..." as a remote host
+    const tar = IS_WIN ? path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
+    await run(fs.existsSync(tar) || !IS_WIN ? tar : 'tar', ['-xf', archive, '-C', work]);
     for (const name of ['ffmpeg', 'ffprobe']) {
       const exe = IS_WIN ? `${name}.exe` : name;
       const src = findFile(work, exe);

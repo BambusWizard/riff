@@ -273,3 +273,12 @@
   pills.addEventListener('click', (e) => { if (e.target.closest('.platform-btn')) close(); }); // app.js switches the source
   document.addEventListener('click', (e) => { if (!box.contains(e.target)) close(); });
 })();
+
+// global search only on the home screen (see body.off-home in mobile.css)
+(() => {
+  const home = document.getElementById('view-discover');
+  if (!home) return;
+  const sync = () => document.body.classList.toggle('off-home', !home.classList.contains('active'));
+  new MutationObserver(sync).observe(home, { attributes: true, attributeFilter: ['class'] });
+  sync();
+})();

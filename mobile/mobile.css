@@ -78,6 +78,10 @@ html.is-mobile .app-layout {
   position: fixed !important;
   inset: calc(var(--safe-top) + 108px) 0 var(--chrome-bottom) 0 !important;
 }
+/* the global search lives on the home screen only; favourites, playlists etc. have their own search box,
+   and two search bars at once confuse (mobile-ui.js sets the class). The 50px are the search row + its margin */
+html.is-mobile body.off-home .top-nav { display: none !important; }
+html.is-mobile body.off-home .app-layout { top: calc(var(--safe-top) + 58px) !important; }
 html.is-mobile .main-content {
   border-radius: 0 !important;
   padding: 12px 16px 24px !important;

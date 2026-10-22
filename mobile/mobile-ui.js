@@ -698,3 +698,28 @@ applyRowBadges();
       : 'How the accent colour spreads: Classic, Tonal spot (softer, tinted backgrounds), Expressive (shifted hues, coloured backgrounds), Vibrant (strongest colour), Neutral (almost grey).';
   });
 })();
+
+// home: "My Wave" / "Jump back in" as a two-button switch at the top. On desktop it is a column of tiny dots;
+// they stay in the page, hidden, and the switch presses them, so app.js still does the switching
+(() => {
+  const dots = document.getElementById('home-hero-dots');
+  const header = document.querySelector('#section-my-wave .home-pane-header');
+  if (!dots || !header) return;
+  const seg = document.createElement('div');
+  seg.className = 'home-switch';
+  header.prepend(seg);
+  const sync = () => {
+    const btns = [...dots.querySelectorAll('button')];
+    seg.hidden = btns.length < 2; // one pane only: its title shows instead
+    seg.replaceChildren(...btns.map((b) => {
+      const c = document.createElement('button');
+      c.type = 'button';
+      c.textContent = b.getAttribute('aria-label');
+      c.classList.toggle('active', b.classList.contains('active'));
+      c.addEventListener('click', () => b.click());
+      return c;
+    }));
+  };
+  new MutationObserver(sync).observe(dots, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+  sync();
+})();

@@ -131,7 +131,10 @@ html.is-mobile .sidebar .nav-badge { transform: scale(0.85); transform-origin: l
 html.is-mobile .nav-item,
 html.is-mobile .rail-icon-btn {
   background: transparent !important; background-image: none !important; box-shadow: none !important;
-  border-radius: 0 !important; transform: none !important; position: relative;
+  border-radius: 0 !important; position: relative;
+  /* keep the 3D transform every button has (styles.css): with backface-visibility: hidden and no transform,
+     Safari paints these buttons invisible and they only flash up while touched. It also stops the tap squeeze */
+  transform: translateZ(0) !important;
 }
 html.is-mobile .sidebar .nav-indicator {
   width: 56px !important; height: 32px !important; border-radius: 16px !important;

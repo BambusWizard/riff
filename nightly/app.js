@@ -629,7 +629,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     lastMedia = { g, t: now };
     if (cmd === 'toggle') togglePlayPause();
     else if (cmd === 'play') { if (!state.isPlaying) playSmooth(); }
-    else if (cmd === 'pause') { if (state.isPlaying) pauseSmooth(); }
+    // a held song (see pauseSmooth) still counts as playing for iOS, so its lock screen may offer "pause": resume
+    else if (cmd === 'pause') { if (state.isPlaying) pauseSmooth(); else if (el.nativeAudio && el.nativeAudio.__riffHold) playSmooth(); }
     else if (cmd === 'next') playNext();
     else if (cmd === 'prev') playPrev();
     else if (cmd === 'stop') { if (state.isPlaying) pauseSmooth(); }
@@ -5063,7 +5064,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     setTimeout(() => {
       if (curToken !== smoothFadeToken) return;
       if (audio) {
-        try { audio.pause(); } catch (e) {}
+        // iPhone Home Screen app in the background: hold the song silently instead (mobile/bridge.js), or iOS
+        // freezes the app and the lock screen's play button can't reach it any more
+        const held = window.RiffBackgroundHold && window.RiffBackgroundHold.hold(audio);
+        if (!held) { try { audio.pause(); } catch (e) {} }
       }
       if (state.secondaryAudio) {
         try { state.secondaryAudio.pause(); } catch (e) {}
@@ -5111,6 +5115,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     if (el.nativeAudio) {
+      if (window.RiffBackgroundHold) window.RiffBackgroundHold.release(el.nativeAudio); // back to where it was paused
       el.nativeAudio.play().catch(e => console.warn('Play error:', e));
     }
 

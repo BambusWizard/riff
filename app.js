@@ -2153,6 +2153,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   let lastDisplayedSec = -1;
 
   let lastFrameTime = 0;
+  // phones: the Now Playing sheet (scrubber, lyrics) is off screen unless open or being dragged; drawing it every
+  // frame anyway cost the lists their smoothness
+  const isPhoneLayout = document.documentElement.classList.contains('is-mobile');
+  const phonePlayerHidden = () => isPhoneLayout && !document.body.classList.contains('np-open') && !document.body.classList.contains('np-dragging');
   function startVisualizers() {
     if (!state.isWindowVisible) return;
     if (animationFrameId) cancelAnimationFrame(animationFrameId);
@@ -2189,7 +2193,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (document.body.classList.contains('perf') && timestamp - lastFrameTime < 33) return;
       lastFrameTime = timestamp;
 
-      const isVisualizerVisible = miniCanvas && miniCanvas.offsetParent !== null && !document.hidden;
+      const isVisualizerVisible = !isPhoneLayout && miniCanvas && miniCanvas.offsetParent !== null && !document.hidden;
       const isTvkVisualizerVisible = state.isTvKaraokeOpen && tvkCanvas && tvkCanvas.offsetParent !== null && !document.hidden;
       const needBassPulse = !!(state.vfx && state.vfx.bassPulse);
 
@@ -2335,7 +2339,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const sCtx = scrubberCanvas.getContext('2d');
         const sw = cachedTrackWidth || (el.scrubberTrack ? el.scrubberTrack.clientWidth : 0);
         const sh = cachedTrackHeight || 40;
-        sCtx.clearRect(0, 0, sw, sh);
+        if (!phonePlayerHidden()) sCtx.clearRect(0, 0, sw, sh);
 
         const dt = scrubLastTime === 0 ? 0.016 : Math.min((timestamp - scrubLastTime) / 1000, 0.1);
         scrubLastTime = timestamp;
@@ -2370,6 +2374,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         const targetProgress = dur > 0 ? Math.max(0, Math.min(1, cur / dur)) : 0;
+        if (phonePlayerHidden()) { scrubProgress = targetProgress; scrubPrevKnobX = null; return; }
         const followSpeed = isDraggingScrubber ? 32 : 45;
         scrubProgress += (targetProgress - scrubProgress) * Math.min(1, dt * followSpeed);
 
@@ -3053,6 +3058,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       el.nativeAudio.preload = 'auto';
 
+      if (data.isHls && !window.Hls && window.RiffLoadHls) await window.RiffLoadHls(); // phones load hls.js on first use
+      if (currentToken !== state.loadToken) return;
       if (data.isHls && window.Hls && Hls.isSupported()) {
         hlsInstance = new Hls({ enableWorker: true, lowLatencyMode: true, maxBufferLength: 30, maxMaxBufferLength: 60, maxBufferSize: 30 * 1000 * 1000 });
         hlsInstance.loadSource(data.streamUrl);
@@ -3733,7 +3740,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const tick = () => {
       gradientRaf = 0;
       if (!state.isPlaying || !state.isWindowVisible || !isGradientMode()) return;
-      updateActiveGradient();
+      if (!phonePlayerHidden()) updateActiveGradient();
       gradientRaf = requestAnimationFrame(tick);
     };
     gradientRaf = requestAnimationFrame(tick);

@@ -1,5 +1,5 @@
 // Builds the iOS web bundle into www/: Riff's desktop frontend + server.js running in-app.
-import { build } from 'esbuild';
+import { build, transform } from 'esbuild';
 import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -47,12 +47,19 @@ await build({
   logLevel: 'warning',
 });
 
-for (const f of ['app.js', 'styles.css', 'audio-engine.js', 'm3shapes.js', 'lyrics-rtl.js', 'track-sort.js', 'search-text.js', 'library-tools.js']) cpSync(join(root, f), join(out, f));
-cpSync(join(root, 'assets'), join(out, 'assets'), { recursive: true });
+// the page's own scripts and styles, minified (whitespace, syntax, local names; top-level names stay, the
+// scripts share them): 1.2 MB less for the phone to download and parse at every start
+const MINIFY = [['app.js', 'app.js'], ['styles.css', 'styles.css'], ['audio-engine.js', 'audio-engine.js'], ['m3shapes.js', 'm3shapes.js'],
+  ['lyrics-rtl.js', 'lyrics-rtl.js'], ['track-sort.js', 'track-sort.js'], ['search-text.js', 'search-text.js'], ['library-tools.js', 'library-tools.js'],
+  ['mobile/mobile.css', 'mobile.css'], ['mobile/mobile-ui.js', 'mobile-ui.js']];
+for (const [from, to] of MINIFY) {
+  const r = await transform(readFileSync(join(root, from), 'utf8'), { loader: from.endsWith('.css') ? 'css' : 'js', minify: true, target: ['safari16'], legalComments: 'none' });
+  writeFileSync(join(out, to), r.code);
+}
+// Tone.js isn't used by the phone layout; hls.js loads on demand (RiffLoadHls in bridge.js)
+cpSync(join(root, 'assets'), join(out, 'assets'), { recursive: true, filter: (p) => !/Tone\.js$/.test(p) });
 cpSync(join(root, 'vendor'), join(out, 'vendor'), { recursive: true });
-cpSync(join(root, 'mobile', 'mobile.css'), join(out, 'mobile.css'));
 cpSync(join(root, 'mobile', 'pwa'), join(out, 'pwa'), { recursive: true });
-cpSync(join(root, 'mobile', 'mobile-ui.js'), join(out, 'mobile-ui.js'));
 
 let html = readFileSync(join(root, 'index.html'), 'utf8');
 html = html
@@ -88,6 +95,7 @@ html = html
     + 'window.__riffSplashStep=function(p,t){if(!s)return;s.querySelector("em").style.width=Math.round(p*100)+"%";if(t!=null)s.querySelector("span").textContent=t};'
     + 'document.addEventListener("load",function(e){var x=e.target;if(x&&x.tagName==="SCRIPT"&&x.src){n++;window.__riffSplashStep(.05+.7*Math.min(1,n/T),"Loading app… "+Math.min(n,T)+"/"+T)}},true)})()</script>')
   .replace('<link rel="stylesheet" href="styles.css">', '<link rel="stylesheet" href="styles.css">\n  <link rel="stylesheet" href="mobile.css">')
+  .replace(/\s*<script src="assets\/hls\.min\.js"><\/script>/, '')
   .replace('<script src="audio-engine.js"></script>', '<script src="mobile-bridge.js"></script>\n  <script src="audio-engine.js"></script>')
   .replace('<script src="app.js"></script>', '<script src="app.js"></script>\n  <script src="mobile-ui.js"></script>')
   // Now Playing is a sheet on phones and starts closed

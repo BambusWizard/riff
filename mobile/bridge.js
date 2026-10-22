@@ -273,6 +273,15 @@ function endSilence(audio) {
   audio.loop = false;
   audio.__riffSilent = false;
 }
+// hls.js (600 KB) is only needed for HLS streams, so the web build loads it the first time one plays
+let hlsLoading = null;
+window.RiffLoadHls = () => hlsLoading || (hlsLoading = new Promise((resolve) => {
+  const s = document.createElement('script');
+  s.src = 'assets/hls.min.js'; // as the service worker caches it (every assets/ file, see build.mjs)
+  s.onload = resolve;
+  s.onerror = () => { hlsLoading = null; resolve(); };
+  document.head.appendChild(s);
+}));
 window.__riffKeepAlive = {
   start(audio) {
     audio.__riffSilent = true;

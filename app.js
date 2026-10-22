@@ -5456,7 +5456,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   if (el.scrubberTrack) {
-    el.scrubberTrack.addEventListener('mousedown', (e) => {
+    // pointer events: the same for a mouse and a finger (iOS sends mouse events only after a tap, so no drag)
+    el.scrubberTrack.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      try { el.scrubberTrack.setPointerCapture(e.pointerId); } catch (err) {}
       isDraggingScrubber = true;
       hasDrawnPausedFrame = false;
       if (!animationFrameId) startVisualizers();
@@ -5465,12 +5468,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  window.addEventListener('mousemove', (e) => {
+  window.addEventListener('pointermove', (e) => {
     if (!isDraggingScrubber) return;
     updateScrubberPositionFromEvent(e);
   });
 
-  window.addEventListener('mouseup', (e) => {
+  const endScrub = (e) => {
     if (!isDraggingScrubber) return;
     isDraggingScrubber = false;
     if (el.scrubberTrack) el.scrubberTrack.classList.remove('dragging');
@@ -5480,7 +5483,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       updateMediaPositionState();
     }
     state.scrubberDragTargetTime = undefined;
-  });
+  };
+  window.addEventListener('pointerup', endScrub);
+  window.addEventListener('pointercancel', endScrub);
 
   function getAllPresets() {
     return [...defaultPresets, ...state.customPresets];

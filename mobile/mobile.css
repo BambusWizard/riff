@@ -372,11 +372,11 @@ html.is-mobile .sync-mode-card .settings-title-group { flex: 1 1 auto !important
 html.is-mobile .sync-mode-card .settings-title-group h3 { font-size: 18px !important; }
 html.is-mobile .sync-mode-card #btn-cancel-sync { flex: 0 0 auto !important; }
 /* when a song has lyrics, the cover shrinks so the lyrics get the space */
-html.is-mobile #right-panel:not(.lyrics-empty) .cover-container,
-html.is-mobile #right-panel:not(.lyrics-empty) .right-panel-cover,
-html.is-mobile #right-panel:not(.lyrics-empty) .right-panel-cover-fallback { width: min(42vw, 20vh) !important; height: min(42vw, 20vh) !important; }
-html.is-mobile #right-panel:not(.lyrics-empty) .lyrics-section { flex: 1 1 auto !important; min-height: 0 !important; }
-html.is-mobile #right-panel:not(.lyrics-empty) .lyrics-container { flex: 1 1 auto !important; min-height: 0 !important; overflow-y: auto !important; }
+html.is-mobile #right-panel:not(.lyrics-empty):not(.np-hide-lyrics) .cover-container,
+html.is-mobile #right-panel:not(.lyrics-empty):not(.np-hide-lyrics) .right-panel-cover,
+html.is-mobile #right-panel:not(.lyrics-empty):not(.np-hide-lyrics) .right-panel-cover-fallback { width: min(42vw, 20vh) !important; height: min(42vw, 20vh) !important; }
+html.is-mobile #right-panel:not(.lyrics-empty):not(.np-hide-lyrics) .lyrics-section { flex: 1 1 auto !important; min-height: 0 !important; }
+html.is-mobile #right-panel:not(.lyrics-empty):not(.np-hide-lyrics) .lyrics-container { flex: 1 1 auto !important; min-height: 0 !important; overflow-y: auto !important; }
 
 /* Spotify "Log in" redirects back to a local web server, which the phone build doesn't have;
    playlist links and the Spotify data-export files work on the phone */
@@ -429,19 +429,17 @@ html.is-mobile .chip-btn { min-height: 36px !important; }
 html.is-mobile .lyrics-action-btn { width: 40px !important; height: 40px !important; }
 
 /* lyrics showing: compact header (small cover + title/artist in one row), lyrics fill the screen */
-html.is-mobile #right-panel:not(.lyrics-empty) .right-panel-artwork-box {
+html.is-mobile #right-panel:not(.lyrics-empty):not(.np-hide-lyrics) .right-panel-artwork-box {
   flex-direction: row !important; align-items: center !important; justify-content: flex-start !important; gap: 12px !important; text-align: left !important; flex: 0 0 auto !important;
 }
-html.is-mobile #right-panel:not(.lyrics-empty) .cover-container,
-html.is-mobile #right-panel:not(.lyrics-empty) .right-panel-cover,
-html.is-mobile #right-panel:not(.lyrics-empty) .right-panel-cover-fallback { width: 56px !important; height: 56px !important; border-radius: 8px !important; flex: 0 0 auto !important; }
-html.is-mobile #right-panel:not(.lyrics-empty) #btn-right-panel-art { display: none !important; }
-html.is-mobile #right-panel:not(.lyrics-empty) .right-panel-meta { align-items: flex-start !important; text-align: left !important; min-width: 0 !important; flex: 1 1 auto !important; }
-html.is-mobile #right-panel:not(.lyrics-empty) .right-panel-title { font-size: 17px !important; text-align: left !important; }
-html.is-mobile #right-panel:not(.lyrics-empty) .lyrics-header { justify-content: flex-start !important; }
+html.is-mobile #right-panel:not(.lyrics-empty):not(.np-hide-lyrics) .cover-container,
+html.is-mobile #right-panel:not(.lyrics-empty):not(.np-hide-lyrics) .right-panel-cover,
+html.is-mobile #right-panel:not(.lyrics-empty):not(.np-hide-lyrics) .right-panel-cover-fallback { width: 56px !important; height: 56px !important; border-radius: 8px !important; flex: 0 0 auto !important; }
+html.is-mobile #right-panel:not(.lyrics-empty):not(.np-hide-lyrics) #btn-right-panel-art { display: none !important; }
+html.is-mobile #right-panel:not(.lyrics-empty):not(.np-hide-lyrics) .right-panel-meta { align-items: flex-start !important; text-align: left !important; min-width: 0 !important; flex: 1 1 auto !important; }
+html.is-mobile #right-panel:not(.lyrics-empty):not(.np-hide-lyrics) .right-panel-title { font-size: 17px !important; text-align: left !important; }
+html.is-mobile #right-panel:not(.lyrics-empty):not(.np-hide-lyrics) .lyrics-header { justify-content: flex-start !important; }
 html.is-mobile .right-panel-header-actions { display: flex !important; align-items: center !important; justify-content: flex-end !important; gap: 6px !important; width: 100% !important; }
-html.is-mobile .np-tools-moved { display: flex !important; gap: 6px !important; padding: 0 !important; margin-right: auto !important; background: transparent !important; }
-html.is-mobile .np-tools-moved .lyrics-action-btn { width: 36px !important; height: 36px !important; }
 html.is-mobile #right-panel .lyrics-header:empty, html.is-mobile #right-panel .lyrics-header:not(:has(*)) { display: none !important; }
 
 /* like button in Now Playing */
@@ -450,7 +448,7 @@ html.is-mobile .np-like svg { width: 24px; height: 24px; }
 html.is-mobile .np-like.on { color: #ff5a8a; }
 html.is-mobile .np-like.pop { animation: np-like-pop .35s cubic-bezier(.2, .8, .2, 1.4); }
 @keyframes np-like-pop { 0% { transform: scale(1); } 40% { transform: scale(1.3); } 100% { transform: scale(1); } }
-html.is-mobile #right-panel:not(.lyrics-empty) .right-panel-title-row { width: 100% !important; }
+html.is-mobile #right-panel:not(.lyrics-empty):not(.np-hide-lyrics) .right-panel-title-row { width: 100% !important; }
 
 /* ---------- artist page: compact, centred header; bio clamped to 3 lines (tap to expand) ---------- */
 html.is-mobile .artist-hero-card { padding: 18px 16px 16px !important; min-height: 0 !important; height: auto !important; position: relative !important; }
@@ -527,3 +525,27 @@ html.is-mobile .row-sheet-card button:active { background: var(--md-sys-color-su
 html.is-mobile [data-preblur="1"] { filter: none !important; }
 /* the home glow is two soft radial gradients already; the extra 80px blur on top costs every frame on iOS */
 html.is-mobile .home-ambient-layer { filter: none !important; }
+
+/* ---------- Now Playing header: chevron (close) on the left, lyrics on/off + tools menu on the right ---------- */
+html.is-mobile #right-panel .lyrics-header,
+html.is-mobile #right-panel #btn-lyrics-mode { display: none !important; }
+html.is-mobile #btn-close-right-panel {
+  order: -1; margin-right: auto !important; width: 40px !important; height: 40px !important;
+  opacity: 0.8 !important; background: none !important; color: var(--md-sys-color-on-surface) !important;
+}
+html.is-mobile .np-head-btn {
+  width: 40px; height: 40px; display: grid; place-items: center; border: 0; border-radius: 50%;
+  background: none; color: var(--md-sys-color-on-surface); opacity: 0.8;
+}
+html.is-mobile #np-lyrics-toggle.active { background: color-mix(in srgb, var(--md-sys-color-on-surface-solid, #fff) 14%, transparent); opacity: 1; }
+/* lyrics switched off: the big cover in the middle, as when a song has no lyrics */
+html.is-mobile #right-panel.np-hide-lyrics .lyrics-section { display: none !important; }
+html.is-mobile #right-panel.np-hide-lyrics .right-panel-artwork-box { margin: auto 0 !important; }
+
+/* like in Now Playing: right edge, just above the timer */
+html.is-mobile .playbar-center { position: relative !important; }
+html.is-mobile #np-like { position: absolute; right: -8px; top: -46px; }
+html.is-mobile body:not(.np-open) #np-like { display: none !important; }
+
+/* the timeline follows the finger instead of scrolling or closing the sheet */
+html.is-mobile #scrubber-track { touch-action: none; }

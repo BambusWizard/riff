@@ -88,17 +88,62 @@ applyRowBadges();
   if (window.RiffCore) preferWordLyrics(); else window.addEventListener('riff:ready', preferWordLyrics, { once: true });
 
   // lyrics tools (edit / sync / translate / fullscreen) move up next to the Line/Word button,
-  // so the lyrics get that row back; same buttons, so their handlers keep working
-  const tools = panel.querySelector('.lyrics-header-actions');
+  // header: a chevron to close on the left; on the right "lyrics on/off" and a menu with the lyrics tools
+  // (edit, sync, translate, karaoke, word/line). The menu presses the real buttons, so their handlers keep working
   const topRow = panel.querySelector('.right-panel-header-actions');
-  if (tools && topRow) { topRow.prepend(tools); tools.classList.add('np-tools-moved'); }
+  const closeBtn = document.getElementById('btn-close-right-panel');
+  if (topRow && closeBtn) {
+    closeBtn.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
+    closeBtn.title = 'Close';
+    const LYRICS = 'riff_np_lyrics';
+    const lyricsOn = () => { try { return localStorage.getItem(LYRICS) !== '0'; } catch (e) { return true; } };
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'np-head-btn';
+    toggle.id = 'np-lyrics-toggle';
+    toggle.setAttribute('aria-label', 'Lyrics');
+    toggle.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h13"/></svg>';
+    const applyLyrics = () => { const on = lyricsOn(); panel.classList.toggle('np-hide-lyrics', !on); toggle.classList.toggle('active', on); };
+    toggle.addEventListener('click', () => {
+      try { localStorage.setItem(LYRICS, lyricsOn() ? '0' : '1'); } catch (e) {}
+      applyLyrics();
+    });
+    applyLyrics();
+
+    const more = document.createElement('button');
+    more.type = 'button';
+    more.className = 'np-head-btn';
+    more.id = 'np-more';
+    more.setAttribute('aria-label', 'More');
+    more.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>';
+    more.addEventListener('click', () => {
+      const modeBtn = document.getElementById('btn-lyrics-mode');
+      const items = [
+        ['btn-lyrics-mode', `Lyrics mode: ${(modeBtn && modeBtn.textContent.trim()) || 'Word'}`],
+        ['btn-add-custom-lyrics', 'Edit lyrics'],
+        ['btn-sync-lyrics', 'Sync lyrics'],
+        ['btn-translate-lyrics', 'Translate lyrics'],
+        ['btn-tv-karaoke', 'Fullscreen karaoke'],
+      ].filter(([id]) => { const b = document.getElementById(id); return b && !b.classList.contains('hidden'); });
+      const sheet = document.createElement('div');
+      sheet.className = 'row-sheet';
+      sheet.innerHTML = '<div class="row-sheet-card"><div class="row-sheet-title">Lyrics</div><div class="row-sheet-artist"></div>'
+        + items.map(([id, label]) => `<button type="button" data-id="${id}">${label}</button>`).join('') + '</div>';
+      sheet.addEventListener('click', (e) => {
+        const b = e.target.closest('button[data-id]');
+        if (b || !e.target.closest('.row-sheet-card')) sheet.remove();
+        if (b) document.getElementById(b.dataset.id).click();
+      });
+      document.body.appendChild(sheet);
+    });
+    topRow.append(toggle, more);
+  }
 
   // like button next to the title in Now Playing (the player bar's heart is hidden on phones);
   // it presses the real one and mirrors its state
   // (and one more at the right end of the mini player)
   const realFav = document.getElementById('btn-toggle-fav');
   const favIcon = document.getElementById('fav-icon');
-  const titleRow = panel.querySelector('.right-panel-title-row');
   const addLike = (id, parent) => {
     const like = document.createElement('button');
     like.id = id;
@@ -116,7 +161,9 @@ applyRowBadges();
     parent.appendChild(like);
     mirror();
   };
-  if (realFav && favIcon && titleRow) addLike('np-like', titleRow);
+  // in Now Playing the heart sits above the song's timer on the right, so it doesn't push the title around
+  const npCenter = playbar.querySelector('.playbar-center');
+  if (realFav && favIcon && npCenter) addLike('np-like', npCenter);
   if (realFav && favIcon) addLike('mini-like', playbar);
 
   // swipe the mini player sideways to skip, like the cover in Now Playing: left = the next song (further down the

@@ -110,10 +110,10 @@ html.is-mobile .rail-action-group { flex-direction: row !important; gap: 0 !impo
 html.is-mobile .nav-active-indicator,
 html.is-mobile .rail-divider,
 html.is-mobile #btn-toggle-presets-drawer { display: none !important; }
-/* seven buttons in seven equal cells (the tabs and the playlists button live in different groups,
+/* the buttons in equal cells, as many as are switched on (the tabs and the playlists button live in different groups,
    so the groups step aside and the buttons become the grid's items) */
 html.is-mobile .sidebar {
-  display: grid !important; grid-template-columns: repeat(7, 1fr) !important; justify-items: center !important;
+  display: grid !important; grid-template-columns: none !important; grid-auto-flow: column !important; grid-auto-columns: 1fr !important; justify-items: center !important;
   align-content: center !important; overflow: hidden !important; padding-left: 4px !important; padding-right: 4px !important;
 }
 html.is-mobile .sidebar-nav,
@@ -567,3 +567,14 @@ html.is-mobile body.np-open.np-settling .top-nav { transition: opacity .26s cubi
 html.is-mobile body.np-dragging #right-panel { transition: none !important; }
 html.is-mobile body.np-settling #right-panel,
 html.is-mobile body.np-settling .playbar { transition: transform .26s cubic-bezier(.2, .8, .2, 1) !important; }
+
+/* tab bar buttons switched off in Settings -> Interface -> Tab bar */
+html.is-mobile .sidebar .tab-off { display: none !important; }
+html.is-mobile .tabbar-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+html.is-mobile .tabbar-chip {
+  width: 44px; height: 40px; display: grid; place-items: center; border: 0; border-radius: 14px;
+  background: var(--md-sys-color-surface-container-highest); color: var(--md-sys-color-outline); opacity: .55;
+  transition: background .15s ease, color .15s ease, opacity .15s ease;
+}
+html.is-mobile .tabbar-chip svg { width: 20px; height: 20px; }
+html.is-mobile .tabbar-chip.active { background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); opacity: 1; }

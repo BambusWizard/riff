@@ -570,3 +570,50 @@ applyRowBadges();
     });
   }
 })();
+
+// tab bar: every button but Settings can be hidden (Settings -> Interface -> Tab bar); Settings stays, or
+// there would be no way back
+(() => {
+  const KEY = 'riff_tabbar_hidden';
+  const BUTTONS = [
+    ['nav-discover', 'Home'], ['nav-favorites', 'Favorites'], ['nav-local', 'My files'], ['nav-history', 'History'],
+    ['nav-queue', 'Queue'], ['btn-toggle-playlists-drawer', 'Playlists'],
+  ].filter(([id]) => document.getElementById(id));
+  const hidden = () => { try { return new Set(JSON.parse(localStorage.getItem(KEY) || '[]')); } catch (e) { return new Set(); } };
+  const apply = () => {
+    const off = hidden();
+    for (const [id] of BUTTONS) document.getElementById(id).classList.toggle('tab-off', off.has(id));
+  };
+  apply();
+
+  const group = document.querySelector('.settings-section[data-cat="interface"] .m3-group');
+  if (!group) return;
+  const row = document.createElement('div');
+  row.className = 'setting-item';
+  row.innerHTML = `
+    <div style="display: flex; flex-direction: column; gap: 2px;">
+      <span class="setting-name">Tab bar</span>
+      <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Tap an icon to show or hide it at the bottom.</span>
+    </div>
+    <div class="tabbar-chips"></div>`;
+  const chips = row.querySelector('.tabbar-chips');
+  for (const [id, label] of BUTTONS) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'tabbar-chip';
+    chip.title = label;
+    chip.setAttribute('aria-label', label);
+    const svg = document.getElementById(id).querySelector('svg');
+    chip.innerHTML = svg ? svg.outerHTML : label;
+    chip.classList.toggle('active', !hidden().has(id));
+    chip.addEventListener('click', () => {
+      const off = hidden();
+      if (off.has(id)) off.delete(id); else off.add(id);
+      try { localStorage.setItem(KEY, JSON.stringify([...off])); } catch (e) {}
+      chip.classList.toggle('active', !off.has(id));
+      apply();
+    });
+    chips.appendChild(chip);
+  }
+  group.prepend(row);
+})();

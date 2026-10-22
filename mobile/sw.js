@@ -11,7 +11,12 @@ const COVERS_CORS = 'covers-cors';
 const MAX_COVERS = 1500;
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
+  // the page is fetched as index.html?v=VERSION: without the query the CDN may still hand out the previous build's page
+  e.waitUntil(caches.open(CACHE).then((c) => Promise.all(SHELL.map(async (u) => {
+    const r = await fetch(new Request(u === 'index.html' ? `index.html?v=${VERSION}` : u, { cache: 'reload' }));
+    if (!r.ok) throw new Error(`${u}: ${r.status}`);
+    await c.put(u, r);
+  }))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {

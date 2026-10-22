@@ -66,6 +66,12 @@ html = html
     + '\n  <meta name="theme-color" content="#121214">'
     // bridge.js compares it with its own version: a stale page that got newer scripts reloads itself
     + `\n  <meta name="riff-build" content="${VERSION}">`)
+  // loading screen until app.js is ready (and while a newer build loads); bridge.js hides it on riff:ready
+  .replace('</head>', '  <style>#riff-splash{position:fixed;inset:0;z-index:2147483000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#121214;color:#e6e1e5;font:500 15px -apple-system,system-ui,sans-serif;transition:opacity .25s ease}'
+    + '#riff-splash.gone{opacity:0;pointer-events:none}#riff-splash i{width:14px;height:14px;border-radius:50%;background:#d0bcff;animation:riff-pulse 1s ease-in-out infinite alternate}'
+    + '#riff-splash b{font-size:22px;letter-spacing:.01em}#riff-splash span{min-height:1em;font-size:12px;color:#938f99}'
+    + '@keyframes riff-pulse{from{transform:scale(.7);opacity:.5}to{transform:scale(1.15);opacity:1}}</style>\n</head>')
+  .replace(/<body([^>]*)>/, '<body$1>\n  <div id="riff-splash"><i></i><b>Riff</b><span></span></div>')
   .replace('<link rel="stylesheet" href="styles.css">', '<link rel="stylesheet" href="styles.css">\n  <link rel="stylesheet" href="mobile.css">')
   .replace('<script src="audio-engine.js"></script>', '<script src="mobile-bridge.js"></script>\n  <script src="audio-engine.js"></script>')
   .replace('<script src="app.js"></script>', '<script src="app.js"></script>\n  <script src="mobile-ui.js"></script>')

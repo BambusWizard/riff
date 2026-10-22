@@ -346,6 +346,18 @@ if (!Capacitor.isNativePlatform() && RIFF_PROXY_URL) {
   document.addEventListener('pause', applyRemote, true); // media events don't bubble
 }
 
+// ---- loading screen (build.mjs puts it in the page): hidden once app.js is up, shown again for an update ----
+{
+  const splash = document.getElementById('riff-splash');
+  const hide = () => { if (!splash || splash.classList.contains('gone')) return; splash.classList.add('gone'); };
+  window.RiffSplash = {
+    show(text) { if (!splash) return; splash.querySelector('span').textContent = text || ''; splash.classList.remove('gone'); },
+    hide,
+  };
+  window.addEventListener('riff:ready', () => requestAnimationFrame(hide), { once: true });
+  setTimeout(hide, 15000); // never stuck behind it, whatever fails
+}
+
 // ---- web build: pick up a new deploy without reinstalling the Home Screen app ----
 // (removing the app from the Home Screen also wipes its likes, playlists and access key)
 if (!Capacitor.isNativePlatform()) {
@@ -360,15 +372,19 @@ if (!Capacitor.isNativePlatform()) {
   // sw.js keeps this build's files on the phone, so the Home Screen app also opens without internet
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch((e) => console.warn('[sw]', e.message));
   const TRIED = 'riff_update_tried';
+  const RETRY_MS = 60 * 1000;
   let pending = null;
   const apply = () => {
     if (!pending || audioBusy()) return; // never cut a song off; retried on the next pause
     try {
-      // a CDN that still serves the old page would loop us; try each version once per session
-      if (sessionStorage.getItem(TRIED) === pending) return;
-      sessionStorage.setItem(TRIED, pending);
+      // a CDN that still serves the old page would make us reload in a loop; the same version is tried
+      // again only after a minute (a Home Screen app can stay in memory for days, so not "once per session")
+      const [v, at] = (sessionStorage.getItem(TRIED) || '').split('|');
+      if (v === pending && Date.now() - Number(at) < RETRY_MS) return;
+      sessionStorage.setItem(TRIED, `${pending}|${Date.now()}`);
     } catch (e) {}
-    location.replace(`${location.pathname}?v=${pending}`); // new URL, so the page itself isn't taken from cache
+    if (window.RiffSplash) window.RiffSplash.show(`Updating to build ${pending}…`);
+    location.replace(`${location.pathname}?v=${pending}`); // new URL, so neither the browser nor the CDN answers from cache
   };
   const check = async () => {
     try {
@@ -383,5 +399,5 @@ if (!Capacitor.isNativePlatform()) {
   document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
   document.addEventListener('pause', apply, true); // media events don't bubble
   setInterval(check, 15 * 60 * 1000);
-  setTimeout(check, 5000);
+  check(); // at launch nothing is playing yet, so a newer build loads before the app is used
 }

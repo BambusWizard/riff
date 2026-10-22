@@ -266,7 +266,8 @@ html.is-mobile .chips-row, html.is-mobile .genre-chips { overflow-x: auto !impor
 html.is-mobile .track-row .track-row-actions { opacity: 1 !important; }
 
 /* ---------- touch-sized details ---------- */
-html.is-mobile .rail-action-group { display: flex !important; }
+/* (the action group stays display: contents from the tab bar rules above: as a box of its own it would keep
+   an empty cell in the tab bar when its playlists button is switched off) */
 html.is-mobile .track-row .btn-row-art,
 html.is-mobile .track-row .track-row-duration { display: none !important; }
 html.is-mobile .track-row .btn-icon-pill { width: 36px !important; height: 36px !important; }

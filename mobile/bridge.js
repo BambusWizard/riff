@@ -337,6 +337,14 @@ if (!Capacitor.isNativePlatform() && RIFF_PROXY_URL) {
 // ---- web build: pick up a new deploy without reinstalling the Home Screen app ----
 // (removing the app from the Home Screen also wipes its likes, playlists and access key)
 if (!Capacitor.isNativePlatform()) {
+  // "build abc1234" next to the logo: shows at a glance whether the phone runs the latest deploy
+  const logo = document.querySelector('.app-logo');
+  if (logo) {
+    const tag = document.createElement('span');
+    tag.className = 'logo-build';
+    tag.textContent = `build ${RIFF_VERSION}`;
+    logo.appendChild(tag);
+  }
   // sw.js keeps this build's files on the phone, so the Home Screen app also opens without internet
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch((e) => console.warn('[sw]', e.message));
   const TRIED = 'riff_update_tried';

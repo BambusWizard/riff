@@ -250,6 +250,10 @@ html.is-mobile .settings-nav-btn { flex: 0 0 auto !important; white-space: nowra
 html.is-mobile .settings-card,
 html.is-mobile .modal-backdrop > * { max-width: calc(100vw - 24px) !important; }
 html.is-mobile .track-row { padding: 8px 6px !important; gap: 12px !important; }
+/* long lists only keep the rows on screen and stand in for the rest with padding (renderTracks in app.js),
+   which only lines up when every row has the same height: 60px + 4px gap = the list's 64px pitch */
+html.is-mobile .tracks-list { gap: 4px !important; }
+html.is-mobile .tracks-list > .track-row { height: 60px !important; min-height: 0 !important; box-sizing: border-box !important; flex-shrink: 0 !important; overflow: hidden; }
 html.is-mobile .track-row-index { display: none !important; }
 html.is-mobile .chips-row, html.is-mobile .genre-chips { overflow-x: auto !important; flex-wrap: nowrap !important; }
 
@@ -469,3 +473,4 @@ html.is-mobile .platform-btn-ym { display: flex !important; }
 html.is-mobile #artist-hero-backdrop,
 html.is-mobile #album-hero-fx,
 html.is-mobile .ambient-img-layer { will-change: transform; }
+html.is-mobile .logo-build { font-size: 11px; color: var(--md-sys-color-outline); font-variant-numeric: tabular-nums; }

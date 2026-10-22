@@ -6387,7 +6387,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       highlightPlayingRow();
 
       const a = rendered.get(startIndex), b = rendered.get(startIndex + 1);
-      const pitch = a && b ? b.offsetTop - a.offsetTop : 0;
+      const pitch = a && b ? b.getBoundingClientRect().top - a.getBoundingClientRect().top : 0;
       if (pitch > 20 && Math.abs(pitch - itemHeight) > 0.5) {
         itemHeight = container._rowPitch = pitch;
         container._lastStartIndex = container._lastEndIndex = -1;

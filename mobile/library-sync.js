@@ -57,6 +57,7 @@ function renameState(names) {
 const words = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/ё/g, 'е').split(/[^\p{L}\p{N}]+/u).filter(Boolean);
 
 const { artistSimilarity, similarity, parseName } = require('../library/names');
+const { enforceCacheLimit } = require('./cache-limit');
 
 // another upload of a song the library already has ("Song (Official Video)" by the artist's channel): the library's
 // copy stands for it, so the list doesn't show the song twice
@@ -312,11 +313,12 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
       if (!r.ok) throw new Error(`PC ${r.status}`);
       const data = new Uint8Array(await r.arrayBuffer());
       if (data.length !== song.size) throw new Error('broke off');
-      try { fs.unlinkSync(file); } catch (e) {}
+      if (file) try { fs.unlinkSync(file); } catch (e) {}
       fs.writeFileSync(`${TRACKS}/${key}.${song.format}`, data);
+      enforceCacheLimit();
       const subs = substitutes();
       if (subs[key]) { delete subs[key]; try { fs.writeFileSync(SUBSTITUTES, JSON.stringify(subs)); } catch (e) {} }
-      log(`library: the cached ${song.artist} - ${song.title} is now the library's copy`);
+      log(file ? `library: the cached ${song.artist} - ${song.title} is now the library's copy` : `library: ${song.artist} - ${song.title} kept on the phone`);
     } catch (e) { log(`library: could not replace the cached ${song.title}: ${e.message}`); } finally { replacing.delete(key); }
   };
   const streamFor = (url) => {
@@ -325,10 +327,10 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
     const song = bySource.get(`${q.get('platform') || 'youtube'}:${q.get('id')}`);
     if (!song || !song.ready) return null;
     const local = localFile({ id: q.get('id') });
-    if (local) {
-      if (!wrongCopy(song, local, q.get('id'))) return null;
-      replaceCopy(song, local, q.get('id'));
-    }
+    if (local && !wrongCopy(song, local, q.get('id'))) return null;
+    // a song heard is kept on the phone like any other (it then plays from here, offline too): the PC's copy is
+    // saved while it plays, or replaces a wrong one
+    replaceCopy(song, local, q.get('id'));
     log(`library: playing ${song.artist} - ${song.title} from the PC`);
     const body = JSON.stringify({ success: true, isLocal: false, streamUrl: `${lastPc.url}/songs/${song.id}/file?k=${encodeURIComponent(lastPc.key)}` });
     return new Response(body, { status: 200, headers: { 'Content-Type': 'application/json' } });

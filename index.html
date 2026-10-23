@@ -432,11 +432,17 @@
         </div>
 
         <div class="artist-content-section">
-          <div class="section-sub-header">
+          <button type="button" class="section-sub-header artist-section-toggle" id="artist-tracks-toggle">
             <h3>Popular tracks</h3>
             <span class="view-subtitle" id="artist-tracks-count">0 tracks</span>
-          </div>
+            <svg class="artist-section-chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>
+          </button>
           <div class="tracks-list" id="artist-tracks-list"></div>
+        </div>
+
+        <div class="artist-content-section" id="artist-albums-section" style="display: none;">
+          <div class="section-sub-header"><h3>Albums</h3></div>
+          <div class="search-albums-row" id="artist-albums-row"></div>
         </div>
       </section>
 

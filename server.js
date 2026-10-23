@@ -1994,6 +1994,83 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
   }
 }
 
+// a Deezer song as the app's track: played from YouTube by its name
+function deezerTrack(item, artistName, cover = '') {
+  const dur = item.duration || 180;
+  if (dur < 50 || dur > 450 || isSpamOrUnofficial(item.title, dur)) return null;
+  return {
+    id: `dz_${item.id}`,
+    title: (item.title || 'untitled'),
+    artist: (item.artist?.name || artistName),
+    duration: dur,
+    thumbnail: item.album?.cover_medium || item.album?.cover_big || cover,
+    url: `https://www.youtube.com/results?search_query=${encodeURIComponent(artistName + ' - ' + item.title + ' official audio')}`,
+    searchQuery: `${artistName} - ${item.title} official audio`,
+    platform: 'youtube',
+    isCached: false
+  };
+}
+
+// All of an artist's songs (the artist page's "all songs"): every release on Deezer, albums and singles, newest
+// first, each song once (a single's song is the album's too). ?id= the artist's Deezer id, ?name= their name
+async function handleArtistSongs(req, res, parsedUrl) {
+  const id = String(parsedUrl.query.id || '');
+  const name = String(parsedUrl.query.name || '');
+  const send = (status, body) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
+  if (!/^\d+$/.test(id)) return send(400, { success: false, error: 'Invalid artist id' });
+  const cacheKey = `songs:${id}`;
+  const cached = getAlbumCache(cacheKey);
+  if (cached) return send(200, cached);
+  try {
+    // Deezer allows about 50 requests in 5 seconds and answers more with an error ("quota"): wait and ask again
+    const dz = async (url) => {
+      for (let i = 0; i < 4; i++) {
+        const d = await fetchItunesJson(url).catch(() => null);
+        if (d && !d.error) return d;
+        await new Promise((r) => setTimeout(r, 1200 * (i + 1)));
+      }
+      return null;
+    };
+    const releases = [];
+    for (let url = `https://api.deezer.com/artist/${id}/albums?limit=100`; url && releases.length < 300;) {
+      const page = await dz(url);
+      releases.push(...((page && page.data) || []));
+      url = page && page.next;
+    }
+    releases.sort((a, b) => String(b.release_date || '').localeCompare(String(a.release_date || '')));
+    const withTracks = new Array(releases.length);
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(4, releases.length) }, async () => {
+      while (next < releases.length) {
+        const i = next++;
+        const r = releases[i];
+        const d = await dz(`https://api.deezer.com/album/${r.id}/tracks?limit=200`);
+        withTracks[i] = ((d && d.data) || []).map((t) => ({ ...t, album: { cover_medium: r.cover_medium, cover_big: r.cover_big } }));
+      }
+    }));
+    // the songs themselves first, then their other versions (sped up, remixes...)
+    const seen = new Set();
+    const songs = [];
+    const versions = [];
+    for (const list of withTracks) {
+      for (const item of list || []) {
+        const v = versionOf(item.title || '');
+        const key = `${v.base}|${v.version.toLowerCase()}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const t = deezerTrack(item, name);
+        if (t) (v.version ? versions : songs).push(t);
+      }
+    }
+    const tracks = [...songs, ...versions];
+    const body = { success: true, tracks };
+    setAlbumCache(cacheKey, body);
+    return send(200, body);
+  } catch (err) {
+    return send(502, { success: false, error: 'Artist service unavailable' });
+  }
+}
+
 async function fetchArtistInfo(artistName) {
   const cleanName = (artistName || '').replace(/ - Topic|VEVO|Official|Records/gi, '').trim();
   const cacheKey = cleanName.toLowerCase();
@@ -2003,6 +2080,8 @@ async function fetchArtistInfo(artistName) {
   let avatar = '';
   let isVerified = false;
   let tracks = [];
+  let albums = [];
+  let deezerId = null;
   let resolvedName = cleanName;
 
   try {
@@ -2020,12 +2099,25 @@ async function fetchArtistInfo(artistName) {
     if (dzData && dzData.data && dzData.data.length > 0) {
       const topArtist = dzData.data[0];
       if (topArtist.name) resolvedName = topArtist.name;
+      deezerId = topArtist.id;
       avatar = topArtist.picture_xl || topArtist.picture_big || topArtist.picture_medium || '';
       isVerified = (topArtist.nb_fan || 0) > 30000;
 
+      // the artist page's row of albums (singles are left out; their songs are in the list of songs)
+      const albumsP = fetchItunesJson(`https://api.deezer.com/artist/${topArtist.id}/albums?limit=100`).then((d) => {
+        const seen = new Set();
+        albums = ((d && d.data) || [])
+          .filter((a) => a && a.record_type !== 'single')
+          .sort((a, b) => String(b.release_date || '').localeCompare(String(a.release_date || '')))
+          .filter((a) => { const k = String(a.title || '').toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; })
+          .map((a) => ({ id: `dz:${a.id}`, title: a.title || '', artist: resolvedName, year: a.release_date ? a.release_date.slice(0, 4) : '', cover: a.cover_xl || a.cover_big || a.cover_medium || '' }));
+      }).catch(() => {});
+
       if (topArtist.tracklist) {
+        // the artist's songs, most played first (Deezer gives 5 unless asked for more)
+        const tracklist = topArtist.tracklist.replace(/([?&])limit=\d+/, '$1limit=100') + (/[?&]limit=/.test(topArtist.tracklist) ? '' : `${topArtist.tracklist.includes('?') ? '&' : '?'}limit=100`);
         const tlistData = await new Promise((resolve) => {
-          https.get(topArtist.tracklist, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 4000 }, (tRes) => {
+          https.get(tracklist, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 4000 }, (tRes) => {
             let td = '';
             tRes.on('data', c => td += c);
             tRes.on('end', () => {
@@ -2036,23 +2128,12 @@ async function fetchArtistInfo(artistName) {
 
         if (tlistData && Array.isArray(tlistData.data)) {
           for (const item of tlistData.data) {
-            const dur = item.duration || 180;
-            if (dur >= 50 && dur <= 450 && !isSpamOrUnofficial(item.title, dur)) {
-              tracks.push({
-                id: `dz_${item.id}`,
-                title: (item.title || 'untitled'),
-                          artist: (item.artist?.name || cleanName),
-                          duration: dur,
-                          thumbnail: item.album?.cover_medium || item.album?.cover_big || avatar,
-                          url: `https://www.youtube.com/results?search_query=${encodeURIComponent(cleanName + ' - ' + item.title + ' official audio')}`,
-                          searchQuery: `${cleanName} - ${item.title} official audio`,
-                          platform: 'youtube',
-                          isCached: false
-              });
-            }
+            const t = deezerTrack(item, cleanName, avatar);
+            if (t) tracks.push(t);
           }
         }
       }
+      await albumsP;
     }
   } catch (e) {}
 
@@ -2088,7 +2169,9 @@ async function fetchArtistInfo(artistName) {
     bio: (bio || '').trim(),
     avatar: avatar || (tracks[0] ? tracks[0].thumbnail : ''),
     isVerified: isVerified,
-    tracks: tracks.slice(0, 35)
+    tracks: tracks.slice(0, 100),
+    albums,
+    deezerId
   };
 
   artistCache.set(cacheKey, result);
@@ -2882,6 +2965,7 @@ const TOKEN_PROTECTED_ROUTES = new Set([
   '/api/vibe',
   '/api/search',
   '/api/artist',
+  '/api/artist/songs',
   '/api/lyrics',
   '/api/download',
   '/api/spotify-import',
@@ -4876,6 +4960,10 @@ const server = http.createServer(async (req, res) => {
       handleVibeRecommendations(req, res, payload);
     });
     return;
+  }
+
+  if (parsedUrl.pathname === '/api/artist/songs') {
+    return handleArtistSongs(req, res, parsedUrl);
   }
 
   if (parsedUrl.pathname === '/api/artist') {

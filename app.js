@@ -6550,6 +6550,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (el.artistVerifiedBadge) el.artistVerifiedBadge.classList.add('hidden');
     if (el.artistHeroBackdrop) el.artistHeroBackdrop.style.backgroundImage = '';
     if (el.artistTracksList) el.artistTracksList.innerHTML = '<div class="empty-hint">Fetching official releases...</div>';
+    showArtistAlbums(null);
 
     const bioCacheKey = cleanName.toLowerCase();
     let bioFromCache = false;
@@ -6624,11 +6625,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (heroCard) heroCard.style.setProperty('--artist-accent-color', 'var(--md-sys-color-primary-container)');
       }
 
-      if (el.artistTracksCount) el.artistTracksCount.textContent = `${data.artist.tracks.length} tracks`;
-
-      requestAnimationFrame(() => {
-        if (el.artistTracksList) renderTracks(el.artistTracksList, data.artist.tracks, 'artist');
-      });
+      showArtistTracks(data.artist.tracks, false);
+      showArtistAlbums(data.artist);
     } catch (e) {
       clearTimeout(bioTimeout);
       console.warn('Artist load error:', e);
@@ -6643,6 +6641,69 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
 
+
+  // the artist page: the most played songs (a few; the heading opens all the artist's songs: the most played,
+  // then every release's, newest first; playing any plays on through the list shown), then a row of the albums
+  const ARTIST_TOP = 5;
+  function showArtistTracks(top, all) {
+    const artist = state.currentArtistData;
+    const toggle = document.getElementById('artist-tracks-toggle');
+    const canOpen = top.length > ARTIST_TOP || !!(artist && artist.deezerId);
+    if (toggle) {
+      toggle.classList.toggle('open', all);
+      toggle.classList.toggle('static', !canOpen);
+      toggle.querySelector('h3').textContent = all ? 'All songs' : 'Popular tracks';
+      toggle.onclick = canOpen ? () => showArtistTracks(top, !all) : null;
+    }
+    if (el.artistTracksCount) el.artistTracksCount.textContent = '';
+    const show = (tracks, queue = tracks) => {
+      if (artist) artist.tracks = queue; // what plays on after a song picked here
+      requestAnimationFrame(() => {
+        if (el.artistTracksList && state.currentArtistData === artist) renderTracks(el.artistTracksList, tracks, 'artist');
+      });
+    };
+    if (!all) { show(top.slice(0, ARTIST_TOP), top); return; }
+    if (!artist || !artist.deezerId) { show(top); return; }
+    if (artist._all) { show(artist._all); return; }
+    show(top);
+    if (el.artistTracksCount) el.artistTracksCount.textContent = 'Loading…';
+    fetch(`http://127.0.0.1:${state.serverPort}/api/artist/songs?id=${artist.deezerId}&name=${encodeURIComponent(artist.name)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (state.currentArtistData !== artist) return;
+        const rest = (data && data.success && data.tracks) || [];
+        const same = window.RiffLibrary && window.RiffLibrary.sameSong
+          ? (a, b) => window.RiffLibrary.sameSong(a, b)
+          : (a, b) => normalizeMatchText(a.title) === normalizeMatchText(b.title);
+        artist._all = [...top, ...rest.filter((t) => !top.some((x) => same(x, t)))];
+        if (el.artistTracksCount) el.artistTracksCount.textContent = `${artist._all.length} songs`;
+        if (document.getElementById('artist-tracks-toggle').classList.contains('open')) show(artist._all);
+      })
+      .catch(() => { if (el.artistTracksCount && state.currentArtistData === artist) el.artistTracksCount.textContent = ''; });
+  }
+
+  function showArtistAlbums(artist) {
+    const section = document.getElementById('artist-albums-section');
+    const row = document.getElementById('artist-albums-row');
+    if (!section || !row) return;
+    const albums = (artist && artist.albums) || [];
+    section.style.display = albums.length ? '' : 'none';
+    row.innerHTML = albums.map((a, i) => `
+      <div class="search-album-card" role="button" tabindex="0" data-i="${i}">
+        <img class="search-album-cover" src="${escapeHtml(a.cover || '')}" alt="${escapeHtml(a.title)}" loading="lazy" />
+        <div class="search-album-info">
+          <span class="search-album-title">${escapeHtml(a.title)}</span>
+          <span class="search-album-sub">${escapeHtml(a.year || '')}</span>
+        </div>
+      </div>`).join('');
+    row.scrollLeft = 0;
+    row.onclick = (e) => {
+      const card = e.target.closest('.search-album-card');
+      if (card) openAlbum(albums[card.dataset.i]);
+    };
+    if (!row._wheelBound) { row._wheelBound = true; bindHorizontalWheel(row); }
+    requestAnimationFrame(() => updateRowFade(row));
+  }
 
   if (el.btnBackArtist) {
     el.btnBackArtist.onclick = (e) => {

@@ -7580,3 +7580,14 @@ body.m3-cover-on .artwork-fallback { display: none !important; }
 
 /* Yandex Music plays only through the phone build's extractor (mobile/mobile.css shows the button) */
 .platform-btn-ym { display: none !important; }
+
+.artist-section-toggle {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  background: none; border: 0; padding: 0 0 8px; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.artist-section-toggle .view-subtitle { margin-left: auto; }
+.artist-section-chevron { flex: 0 0 auto; opacity: 0.7; transition: transform 0.2s ease; }
+.artist-section-toggle.open .artist-section-chevron { transform: rotate(90deg); }
+.artist-section-toggle.static { cursor: default; }
+.artist-section-toggle.static .artist-section-chevron { display: none; }
+#artist-albums-section { margin-top: 24px; }

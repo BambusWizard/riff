@@ -506,9 +506,15 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
       const names = {};
       for (const [k, song] of bySource) if (song.named) names[k] = { title: song.title, artist: song.artist, cover: song.cover };
       for (const t of data.artist.tracks) { renameTrack(t, names); if (bySource.has(keyOf(t))) t.inLibrary = true; }
-      const shown = new Set(data.artist.tracks.map(keyOf));
-      const lead = mine.filter((song) => !song.sources.some((k) => shown.has(k)));
-      data.artist.tracks = collapse([...lead.map(asTrack), ...data.artist.tracks.filter((t) => t.inLibrary || !mine.some((song) => sameSong(t, song)))]);
+      // the list stays most played first: a library song takes the place of the catalogue's, the others go last
+      const used = new Set();
+      const listed = data.artist.tracks.map((t) => {
+        const song = t.inLibrary ? bySource.get(keyOf(t)) : mine.find((s) => !used.has(s.id) && sameSong(t, s));
+        if (!song) return t;
+        used.add(song.id);
+        return t.inLibrary ? t : asTrack(song);
+      });
+      data.artist.tracks = collapse([...listed, ...mine.filter((song) => !used.has(song.id)).map(asTrack)]);
       return { status, body: JSON.stringify(data) };
     }
     if (!mine.length) return null;

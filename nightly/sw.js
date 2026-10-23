@@ -1,7 +1,7 @@
 // Web build only: keeps the app's own files on the phone so the Home Screen app opens without internet.
 // build.mjs fills in VERSION and SHELL (every file of this build, with the same ?v= the page asks for).
-const VERSION = '127fbd8';
-const SHELL = ["index.html","pwa/manifest.webmanifest","pwa/icon-180.png","styles.css?v=127fbd8","mobile.css?v=127fbd8","assets/icon.png","mobile-bridge.js?v=127fbd8","audio-engine.js?v=127fbd8","m3shapes.js?v=127fbd8","lyrics-rtl.js?v=127fbd8","track-sort.js?v=127fbd8","search-text.js?v=127fbd8","library-tools.js?v=127fbd8","app.js?v=127fbd8","mobile-ui.js?v=127fbd8","assets/hls.min.js","pwa/icon-192.png","pwa/icon-512.png"];
+const VERSION = 'cc303c6';
+const SHELL = ["index.html","pwa/manifest.webmanifest","pwa/icon-180.png","styles.css?v=cc303c6","mobile.css?v=cc303c6","assets/icon.png","mobile-bridge.js?v=cc303c6","audio-engine.js?v=cc303c6","m3shapes.js?v=cc303c6","lyrics-rtl.js?v=cc303c6","track-sort.js?v=cc303c6","search-text.js?v=cc303c6","library-tools.js?v=cc303c6","app.js?v=cc303c6","mobile-ui.js?v=cc303c6","assets/hls.min.js","pwa/icon-192.png","pwa/icon-512.png"];
 const CHANNEL = 'nightly';
 // per channel: stable's worker (scope /riff/) must not throw away nightly's files (/riff/nightly/) or back
 const PREFIX = `riff-${CHANNEL}-`;

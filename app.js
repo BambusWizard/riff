@@ -2907,7 +2907,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     state._skipRecordedFor = null;
 
-    if (context !== 'album') currentAlbumPlayRunId++;
+    if (context !== 'album' && queueList) currentAlbumPlayRunId++; // skipping within the album keeps it gathering
     crossfadeTriggered = false;
     state.nextTrackPrefetched = false;
     initAudioContext();
@@ -5784,6 +5784,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     return picked;
   }
 
+  // the album plays as a list, like likes or search: the songs after the picked one come next, in the album's
+  // order, then it starts over. Each song is found on the platform as it's needed, the next ones first; the queue
+  // is the album's found songs in order, the one playing kept wherever the user has skipped to
   async function playAlbumFrom(album, tracks, startIndex = 0) {
     if (!album || !tracks || !tracks.length) return;
     const runId = ++currentAlbumPlayRunId;
@@ -5805,39 +5808,39 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     playTrack(firstResolved, [firstResolved], 0, 'album');
 
+    const found = new Map([[startIdx, firstResolved]]);
+    const rebuild = () => {
+      const list = [];
+      for (let i = 0; i < tracks.length; i++) if (found.has(i)) list.push(found.get(i));
+      const at = state.currentTrack ? list.findIndex(t => isSameTrack(t, state.currentTrack)) : -1;
+      if (at < 0) return; // something else is playing now
+      state.queue = list;
+      state.queueIndex = at;
+      updateQueueBadge();
+      if (state.currentView === 'queue') renderQueueView();
+    };
+
     const hasBusy = typeof beginBusy === 'function';
     if (hasBusy) beginBusy('import');
 
     try {
-      const remaining = tracks.map((t, idx) => ({ t, idx })).filter(item => item.idx !== startIdx);
-      const resolvedMap = new Map();
+      const order = [];
+      for (let k = 1; k < tracks.length; k++) order.push((startIdx + k) % tracks.length);
       let skippedCount = 0;
 
-      await pool(remaining, 4, async (item) => {
+      await pool(order, 4, async (idx) => {
         if (currentAlbumPlayRunId !== runId) return;
-        const resTrack = await resolveAlbumTrack(album, item.t);
+        const resTrack = await resolveAlbumTrack(album, tracks[idx]);
         if (currentAlbumPlayRunId !== runId) return;
         if (resTrack) {
-          resolvedMap.set(item.idx, resTrack);
+          found.set(idx, resTrack);
+          rebuild();
         } else {
           skippedCount++;
         }
       });
 
       if (currentAlbumPlayRunId !== runId) return;
-
-      for (let i = 0; i < tracks.length; i++) {
-        if (i === startIdx) continue;
-        const cand = resolvedMap.get(i);
-        if (!cand) continue;
-        const alreadyInQueue = state.queue.some(q => isSameTrack(q, cand));
-        if (!alreadyInQueue) {
-          state.queue.push(cand);
-        }
-      }
-      updateQueueBadge();
-      if (state.currentView === 'queue') renderQueueView();
-
       if (skippedCount > 0) {
         showToast(`${skippedCount} tracks not found`, 'warning');
       }
@@ -5856,6 +5859,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     state.previousView = state.currentView;
     switchView('album');
+    const playAllBtn = document.getElementById('btn-play-album');
+    if (playAllBtn) playAllBtn.onclick = null; // until this album's songs are in
 
     const coverEl = document.getElementById('album-detail-cover');
     if (coverEl) {
@@ -5946,6 +5951,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       album._tracks = tracks;
+      const playBtn = document.getElementById('btn-play-album');
+      if (playBtn) playBtn.onclick = () => playAlbumFrom(album, tracks, state.isShuffle ? Math.floor(Math.random() * tracks.length) : 0);
 
       if (listEl) {
         listEl.innerHTML = '';

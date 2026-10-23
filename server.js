@@ -12,7 +12,7 @@ const net = require('net');
 const PORT = 38472;
 const { DATA_DIR, CACHE_DIR, CUSTOM_LYRICS_DIR, LYRICS_DIR, THUMBNAILS_DIR, METADATA_PATH, LIBRARY_DIR, LIBRARY_PATH, ytDlpCommand, resolveDownloadDir, resolveBinary } = require('./platform');
 const logger = require('./logger');
-const { versionOf } = require('./library/names');
+const { versionOf, similarity, artistSimilarity } = require('./library/names');
 const { getSystemAudioOutputInfo } = require('./audio-output');
 // iOS can't hand a cross-origin stream to Web Audio, so it plays everything from the disk cache.
 const STREAM_VIA_CACHE = !!require('./platform').STREAM_VIA_CACHE;
@@ -4329,6 +4329,52 @@ async function handleAlbumSearch(req, res, parsedUrl) {
   }
 }
 
+// The album a song is on (the player's "open the album"): the catalogue's song of that name by that artist, its
+// album rather than its single when it has both. ?album= (what the song's own data says) is preferred when it matches
+async function handleAlbumOf(req, res, parsedUrl) {
+  const artist = String(parsedUrl.query.artist || '').trim();
+  const title = String(parsedUrl.query.title || '').trim();
+  const albumName = String(parsedUrl.query.album || '').trim();
+  const send = (status, body) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
+  if (!title) return send(400, { success: false, error: 'title required' });
+  const cacheKey = `of:${artist}|${title}|${albumName}`.toLowerCase();
+  const cached = getAlbumCache(cacheKey);
+  if (cached) return send(200, cached);
+  try {
+    const term = encodeURIComponent(`${artist} ${versionOf(title).base || title}`);
+    const lists = await Promise.all(['ru', 'us'].map(c => fetchItunesJson(`https://itunes.apple.com/search?entity=song&limit=25&country=${c}&term=${term}`).catch(() => null)));
+    const base = versionOf(title).base;
+    const isSingle = (x) => /\s-\s*(Single|EP)$/i.test(x.collectionName || '') || (x.trackCount || 0) < 4;
+    let best = null;
+    let bestScore = 0;
+    for (const x of lists.flatMap(d => (d && Array.isArray(d.results) ? d.results : []))) {
+      if (!x || x.collectionId == null || x.wrapperType !== 'track') continue;
+      const t = similarity(versionOf(x.trackName).base, base);
+      const a = artist ? artistSimilarity(x.artistName, artist) : 1;
+      if (t < 0.8 || a < 0.7) continue;
+      let score = t + a + (isSingle(x) ? 0 : 0.5);
+      if (albumName && similarity(versionOf(x.collectionName).base, versionOf(albumName).base) > 0.85) score += 1;
+      if (score > bestScore) { best = x; bestScore = score; }
+    }
+    if (!best) return send(404, { success: false, error: 'Album not found' });
+    const body = {
+      success: true,
+      album: {
+        id: String(best.collectionId),
+        title: best.collectionName || '',
+        artist: best.collectionArtistName || best.artistName || '',
+        year: best.releaseDate ? best.releaseDate.slice(0, 4) : '',
+        trackCount: best.trackCount || 0,
+        cover: (best.artworkUrl100 || '').replace('100x100', '600x600'),
+      },
+    };
+    setAlbumCache(cacheKey, body);
+    return send(200, body);
+  } catch (err) {
+    return send(502, { success: false, error: 'Album service unavailable' });
+  }
+}
+
 async function handleAlbumTracks(req, res, parsedUrl) {
   const id = (parsedUrl.query.id || '').trim();
   if (!/^\d+$/.test(id)) {
@@ -4363,9 +4409,13 @@ async function handleAlbumTracks(req, res, parsedUrl) {
   };
 
   try {
-    const url = `https://itunes.apple.com/lookup?id=${id}&entity=song`;
-    const data = await fetchItunesJson(url);
-    const results = (data && Array.isArray(data.results)) ? data.results : [];
+    // an album only sold in Russia isn't in the US store, which a lookup without a country asks
+    let results = [];
+    for (const country of ['', '&country=ru']) {
+      const data = await fetchItunesJson(`https://itunes.apple.com/lookup?id=${id}&entity=song${country}`);
+      results = (data && Array.isArray(data.results)) ? data.results : [];
+      if (results.some(r => r && r.wrapperType === 'collection')) break;
+    }
     const albumItem = results.find(r => r && r.wrapperType === 'collection');
     if (!albumItem) {
       return sendResponse(404, { success: false, error: 'Album not found' });
@@ -4633,6 +4683,10 @@ const server = http.createServer(async (req, res) => {
 
   if (parsedUrl.pathname === '/api/albums/search') {
     return handleAlbumSearch(req, res, parsedUrl);
+  }
+
+  if (parsedUrl.pathname === '/api/albums/of') {
+    return handleAlbumOf(req, res, parsedUrl);
   }
 
   if (parsedUrl.pathname === '/api/albums/tracks') {

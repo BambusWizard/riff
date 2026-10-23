@@ -5848,8 +5848,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   let currentAlbumRunId = 0;
 
+  // album.known: songs of the album the user already has (the library's, the one playing); they come first and
+  // play as themselves, then the rest of the album as the catalogue lists it. Without an id only they are shown
   async function openAlbum(album) {
-    if (!album || !album.id) return;
+    if (!album || (!album.id && !(album.known && album.known.length))) return;
     const runId = ++currentAlbumRunId;
 
     state.previousView = state.currentView;
@@ -5907,15 +5909,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     try {
-      const res = await fetch(`http://127.0.0.1:${state.serverPort}/api/albums/tracks?id=${encodeURIComponent(album.id)}`);
-      const data = await res.json();
+      const known = Array.isArray(album.known) ? album.known : [];
+      const data = album.id
+        ? await (await fetch(`http://127.0.0.1:${state.serverPort}/api/albums/tracks?id=${encodeURIComponent(album.id)}`)).json()
+        : { success: true, tracks: [] };
       if (currentAlbumRunId !== runId) return;
 
-      if (!data || !data.success || !Array.isArray(data.tracks) || data.tracks.length === 0) {
+      if (!data || !data.success || !Array.isArray(data.tracks) || (data.tracks.length === 0 && !known.length)) {
         throw new Error(data && data.error ? data.error : 'Failed to load album tracks');
       }
 
-      const tracks = data.tracks;
+      // the user's own songs first, each standing in for the album's song of that name
+      const listed = data.tracks.slice();
+      const own = known.map((k, i) => {
+        const at = listed.findIndex((t) => normalizeMatchText(t.title) === normalizeMatchText(k.title));
+        const t = at >= 0 ? listed.splice(at, 1)[0] : { title: k.title, artist: k.artist, durationMs: (Number(k.duration) || 0) * 1000, no: `own${i}` };
+        albumResolved.set(`${album.id || ''}:${t.no != null ? t.no : 1}`, k);
+        return { t, real: k };
+      });
+      const ownBy = new Map(own.map((x) => [x.t, x.real]));
+      const tracks = [...own.map((x) => x.t), ...listed];
       const albumArtist = (data.album && data.album.artist) || album.artist || '';
       const albumYear = (data.album && data.album.year) || album.year || '';
 
@@ -5938,7 +5951,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         listEl.innerHTML = '';
         const currentCanonicalId = state.currentTrack ? getTrackCanonicalId(state.currentTrack) : '';
         tracks.forEach((t, idx) => {
-          const trackItem = {
+          const trackItem = ownBy.get(t) || {
             id: `${album.id}_${t.disc || 1}_${t.no || (idx + 1)}`,
             title: t.title,
             artist: t.artist || albumArtist,
@@ -5982,6 +5995,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
   window.openAlbum = openAlbum;
+
+  // the album of a song (from the player): the library's name for it when it has one, the catalogue's album of
+  // the song otherwise; the library's songs of that album come first
+  async function openAlbumOf(track) {
+    if (!track) return;
+    const lib = window.RiffLibrary && window.RiffLibrary.albumOf ? window.RiffLibrary.albumOf(track) : null;
+    const artist = (lib && lib.artist) || track.artist || '';
+    const known = lib && lib.songs.length ? lib.songs : [track];
+    let found = null;
+    try {
+      const q = new URLSearchParams({ artist, title: track.title || '', album: (lib && lib.title) || track.album || '' });
+      const data = await (await fetch(`http://127.0.0.1:${state.serverPort}/api/albums/of?${q}`)).json();
+      if (data && data.success) found = data.album;
+    } catch (e) {}
+    if (!found && !lib) { showToast('Album not found', 'warning'); return; }
+    openAlbum({ ...(found || { title: lib.title, artist, cover: track.thumbnail || '' }), id: found ? found.id : '', known });
+  }
+  window.openAlbumOf = openAlbumOf;
 
   function updateRowFade(row) {
     if (!row) return;
@@ -15614,6 +15645,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     next: () => playNext(),
     prev: () => playPrev(true),
     openArtist: (name) => openArtistProfile(name),
+    openAlbumOf: (track) => openAlbumOf(track),
     play: (track) => playTrack(track, [track], 0, null),
   };
   window.dispatchEvent(new Event('riff:ready'));

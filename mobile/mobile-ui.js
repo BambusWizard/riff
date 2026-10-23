@@ -9,6 +9,8 @@
 (() => {
   // desktop's default text scale (1.25x) is sized for a monitor; phones start at 1.0x unless the user picked one
   if (!localStorage.getItem('riff_font_scale')) localStorage.setItem('riff_font_scale', '80');
+  // the settings tabs hidden on phones (mobile.css) are never the one settings opens on
+  if (['plugins', 'custom-themes', 'about'].includes(localStorage.getItem('riff_settings_cat'))) localStorage.setItem('riff_settings_cat', 'interface');
   const Engine = window.RiffAudioEngine;
   if (!Engine) return;
   Engine.prototype.init = function (audioElement) { this.__element = audioElement || this.__element; };
@@ -127,6 +129,18 @@ applyRowBadges();
         if (b) open(names[b.dataset.i]);
       });
       document.body.appendChild(sheet);
+    }, true);
+  }
+
+  // the title in Now Playing opens the song's album (the sheet closes so the album page behind it is seen)
+  const npTitle = document.getElementById('right-panel-title');
+  if (npTitle) {
+    npTitle.addEventListener('click', (e) => {
+      const st = window.RiffCore && window.RiffCore.state;
+      if (!st || !st.currentTrack) return;
+      e.stopImmediatePropagation();
+      closeSheet();
+      window.RiffCore.openAlbumOf(st.currentTrack);
     }, true);
   }
 

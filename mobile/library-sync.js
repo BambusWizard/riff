@@ -444,6 +444,17 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
       title: song.title, artist: song.artist, duration: song.duration, thumbnail: song.cover, inLibrary: true,
     };
   };
+  // the album of a song as the library knows it, and its songs in the library (the album page lists them first)
+  const albumName = (s) => String(s || '').replace(/\s+-\s+(single|ep)$/i, '').trim();
+  const albumOf = (t) => {
+    const song = t && bySource.get(keyOf(t));
+    if (!song || !albumName(song.album)) return null;
+    const name = albumName(song.album);
+    const songs = [...new Set(bySource.values())]
+      .filter((s) => similarity(albumName(s.album), name) > 0.9 && artistSimilarity(s.artist, song.artist) > 0.7)
+      .map((s) => (s === song ? { ...t, title: song.title, artist: song.artist } : asTrack(s)));
+    return { title: name, artist: song.artist, songs };
+  };
   const searchResults = (url, body) => {
     if (!url.includes('/api/search') || !bySource.size) return body;
     let data;
@@ -516,6 +527,7 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
     versions,
     collapseLikes,
     // the PC has its own copy of this song (the cloud mark on rows)
+    albumOf,
     onPc: (t) => { const song = t && bySource.get(keyOf(t)); return !!(song && song.ready); },
     status: () => ({ ...status }),
     run,

@@ -700,3 +700,7 @@ html.is-mobile .home-switch button.active { background: var(--md-sys-color-prima
 /* Play wave as a round icon, so the switch fits on the same row */
 html.is-mobile .my-wave-actions #btn-play-my-wave { width: 40px; padding: 0; justify-content: center; }
 html.is-mobile .my-wave-actions #btn-play-my-wave span { display: none; }
+
+/* settings tabs that do nothing on a phone (desktop plugins, custom theme files, the desktop app's About) */
+html.is-mobile .settings-nav-btn:is([data-cat="plugins"], [data-cat="custom-themes"], [data-cat="about"]),
+html.is-mobile .settings-section:is([data-cat="plugins"], [data-cat="custom-themes"], [data-cat="about"]) { display: none !important; }

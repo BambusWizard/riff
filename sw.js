@@ -1,7 +1,7 @@
 // Web build only: keeps the app's own files on the phone so the Home Screen app opens without internet.
 // build.mjs fills in VERSION and SHELL (every file of this build, with the same ?v= the page asks for).
-const VERSION = '7c63f83';
-const SHELL = ["index.html","pwa/manifest.webmanifest","pwa/icon-180.png","styles.css?v=7c63f83","mobile.css?v=7c63f83","assets/icon.png","assets/hls.min.js?v=7c63f83","mobile-bridge.js?v=7c63f83","audio-engine.js?v=7c63f83","m3shapes.js?v=7c63f83","lyrics-rtl.js?v=7c63f83","track-sort.js?v=7c63f83","search-text.js?v=7c63f83","library-tools.js?v=7c63f83","app.js?v=7c63f83","mobile-ui.js?v=7c63f83","assets/Tone.js","assets/hls.min.js","pwa/icon-192.png","pwa/icon-512.png"];
+const VERSION = '5459062';
+const SHELL = ["index.html","pwa/manifest.webmanifest","pwa/icon-180.png","styles.css?v=5459062","mobile.css?v=5459062","assets/icon.png","mobile-bridge.js?v=5459062","audio-engine.js?v=5459062","m3shapes.js?v=5459062","lyrics-rtl.js?v=5459062","track-sort.js?v=5459062","search-text.js?v=5459062","library-tools.js?v=5459062","app.js?v=5459062","mobile-ui.js?v=5459062","assets/hls.min.js","pwa/icon-192.png","pwa/icon-512.png"];
 const CHANNEL = 'stable';
 // per channel: stable's worker (scope /riff/) must not throw away nightly's files (/riff/nightly/) or back
 const PREFIX = `riff-${CHANNEL}-`;
@@ -55,10 +55,12 @@ self.addEventListener('fetch', (e) => {
   }
 
   // files of this build never change; the rest (fonts, the plugin editor) is saved the first time it is used
-  e.respondWith(caches.match(req).then((hit) => hit || fetch(req).then((r) => {
+  // a request that never answers fails after 20 s instead of hanging the page's start for good (the page's
+  // watchdog then reloads it)
+  e.respondWith(caches.match(req).then((hit) => hit || fromNetwork(req, 20000).then((r) => {
     if (r.ok || (fonts && r.type === 'opaque')) { const copy = r.clone(); caches.open(CACHE).then((c) => c.put(req, copy)); }
     return r;
-  })));
+  })).catch(() => Response.error()));
 });
 
 let trimTimer = null;

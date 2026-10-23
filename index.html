@@ -11,21 +11,21 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Riff">
   <meta name="theme-color" content="#121214">
-  <meta name="riff-build" content="7c63f83">
+  <meta name="riff-build" content="5459062">
   <meta name="riff-channel" content="stable">
   <meta charset="UTF-8">
   <meta name="viewport-desktop" content="width=device-width, initial-scale=1.0">
   <title>Riff</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Google+Sans+Text:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=7c63f83">
-  <link rel="stylesheet" href="mobile.css?v=7c63f83">
-  <style>#riff-splash{position:fixed;inset:0;z-index:2147483000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#121214;color:#e6e1e5;font:500 15px -apple-system,system-ui,sans-serif;transition:opacity .25s ease}#riff-splash.gone{opacity:0;pointer-events:none}#riff-splash i{width:14px;height:14px;border-radius:50%;background:#d0bcff;animation:riff-pulse 1s ease-in-out infinite alternate}#riff-splash b{font-size:22px;letter-spacing:.01em}#riff-splash span{min-height:1em;font-size:12px;color:#938f99;font-variant-numeric:tabular-nums}#riff-splash s{display:block;width:150px;height:3px;border-radius:2px;background:rgba(255,255,255,.12);overflow:hidden;text-decoration:none}#riff-splash em{display:block;height:100%;width:3%;border-radius:2px;background:#d0bcff;transition:width .3s ease}@keyframes riff-pulse{from{transform:scale(.7);opacity:.5}to{transform:scale(1.15);opacity:1}}</style>
+  <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Google+Sans+Text:wght@400;500;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+  <link rel="stylesheet" href="styles.css?v=5459062">
+  <link rel="stylesheet" href="mobile.css?v=5459062">
+  <style>#riff-splash{position:fixed;inset:0;z-index:2147483000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#121214;color:#e6e1e5;font:500 15px -apple-system,system-ui,sans-serif;transition:opacity .25s ease}#riff-splash.gone{opacity:0;pointer-events:none;visibility:hidden;transition:opacity .25s ease,visibility 0s .25s}#riff-splash.gone i{animation:none}#riff-splash i{width:14px;height:14px;border-radius:50%;background:#d0bcff;animation:riff-pulse 1s ease-in-out infinite alternate}#riff-splash b{font-size:22px;letter-spacing:.01em}#riff-splash span{min-height:1em;font-size:12px;color:#938f99;font-variant-numeric:tabular-nums}#riff-splash s{display:block;width:150px;height:3px;border-radius:2px;background:rgba(255,255,255,.12);overflow:hidden;text-decoration:none}#riff-splash em{display:block;height:100%;width:3%;border-radius:2px;background:#d0bcff;transition:width .3s ease}@keyframes riff-pulse{from{transform:scale(.7);opacity:.5}to{transform:scale(1.15);opacity:1}}</style>
 </head>
 <body class="no-nav-transition">
   <div id="riff-splash"><i></i><b>Riff</b><s><em></em></s><span>Loading…</span></div>
-  <script>(function(){var n=0,T=10,s=document.getElementById("riff-splash");window.__riffSplashStep=function(p,t){if(!s)return;s.querySelector("em").style.width=Math.round(p*100)+"%";if(t!=null)s.querySelector("span").textContent=t};document.addEventListener("load",function(e){var x=e.target;if(x&&x.tagName==="SCRIPT"&&x.src){n++;window.__riffSplashStep(.05+.7*Math.min(1,n/T),"Loading app… "+Math.min(n,T)+"/"+T)}},true)})()</script>
+  <script>(function(){var n=0,T=9,s=document.getElementById("riff-splash");window.__riffSplashStep=function(p,t){if(!s)return;s.querySelector("em").style.width=Math.round(p*100)+"%";if(t!=null)s.querySelector("span").textContent=t};document.addEventListener("load",function(e){var x=e.target;if(x&&x.tagName==="SCRIPT"&&x.src){n++;arm();window.__riffSplashStep(.05+.7*Math.min(1,n/T),"Loading app… "+Math.min(n,T)+"/"+T)}},true);var K="riff_boot_retry",ok=false,t=0;function arm(){clearTimeout(t);if(!ok)t=setTimeout(stuck,12000)}function stuck(){if(ok)return;var r=[];try{r=JSON.parse(sessionStorage.getItem(K)||"[]").filter(function(x){return Date.now()-x<180000})}catch(e){}if(r.length<2){r.push(Date.now());try{sessionStorage.setItem(K,JSON.stringify(r))}catch(e){}window.__riffSplashStep(1,"Still loading… trying again");location.reload();return}window.__riffSplashStep(0,"Couldn’t load. Tap to try again");s.onclick=function(){location.reload()}}document.addEventListener("error",function(e){var x=e.target;if(x&&x.tagName==="SCRIPT"&&x.src&&!ok){clearTimeout(t);t=setTimeout(stuck,1000)}},true);window.addEventListener("riff:ready",function(){ok=true;clearTimeout(t)});arm()})()</script>
   <div id="fx-root"></div>
 
   <div class="m3-organic-bg">
@@ -2886,16 +2886,14 @@
       <div class="command-palette-results" id="command-palette-results"></div>
     </div>
   </div>
-
-  <script src="assets/hls.min.js?v=7c63f83"></script>
-  <script src="mobile-bridge.js?v=7c63f83"></script>
-  <script src="audio-engine.js?v=7c63f83"></script>
-  <script src="m3shapes.js?v=7c63f83"></script>
-  <script src="lyrics-rtl.js?v=7c63f83"></script>
-  <script src="track-sort.js?v=7c63f83"></script>
-  <script src="search-text.js?v=7c63f83"></script>
-  <script src="library-tools.js?v=7c63f83"></script>
-  <script src="app.js?v=7c63f83"></script>
-  <script src="mobile-ui.js?v=7c63f83"></script>
+  <script src="mobile-bridge.js?v=5459062"></script>
+  <script src="audio-engine.js?v=5459062"></script>
+  <script src="m3shapes.js?v=5459062"></script>
+  <script src="lyrics-rtl.js?v=5459062"></script>
+  <script src="track-sort.js?v=5459062"></script>
+  <script src="search-text.js?v=5459062"></script>
+  <script src="library-tools.js?v=5459062"></script>
+  <script src="app.js?v=5459062"></script>
+  <script src="mobile-ui.js?v=5459062"></script>
 </body>
 </html>

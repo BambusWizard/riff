@@ -4329,45 +4329,88 @@ async function handleAlbumSearch(req, res, parsedUrl) {
   }
 }
 
-// The album a song is on (the player's "open the album"): the catalogue's song of that name by that artist, its
-// album rather than its single when it has both. ?album= (what the song's own data says) is preferred when it matches
+// The album a song is on (the player's "open the album"): the song of that name by that artist in iTunes and in
+// Deezer (which has much of what iTunes lacks, Russian rap especially), the full album it is on rather than its
+// single whenever there is one. ?album= (what the song's own data says) decides between albums when it matches.
+// Deezer albums have ids "dz:<id>"
+const albumOfItunes = (x) => ({
+  id: String(x.collectionId),
+  title: x.collectionName || '',
+  artist: x.collectionArtistName || x.artistName || '',
+  year: x.releaseDate ? x.releaseDate.slice(0, 4) : '',
+  trackCount: x.trackCount || 0,
+  cover: (x.artworkUrl100 || '').replace('100x100', '600x600'),
+});
+const albumOfDeezer = (a, artist) => ({
+  id: `dz:${a.id}`,
+  title: a.title || '',
+  artist: (a.artist && a.artist.name) || artist || '',
+  year: a.release_date ? a.release_date.slice(0, 4) : '',
+  trackCount: a.nb_tracks || 0,
+  cover: a.cover_xl || a.cover_big || '',
+  single: a.record_type === 'single' || (a.nb_tracks || 0) < 4,
+});
+
 async function handleAlbumOf(req, res, parsedUrl) {
   const artist = String(parsedUrl.query.artist || '').trim();
   const title = String(parsedUrl.query.title || '').trim();
   const albumName = String(parsedUrl.query.album || '').trim();
   const send = (status, body) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
   if (!title) return send(400, { success: false, error: 'title required' });
-  const cacheKey = `of:${artist}|${title}|${albumName}`.toLowerCase();
+  const cacheKey = `of2:${artist}|${title}|${albumName}`.toLowerCase();
   const cached = getAlbumCache(cacheKey);
   if (cached) return send(200, cached);
+  const base = versionOf(title).base || title;
+  const sameSong = (name) => similarity(versionOf(name || '').base, base) >= 0.8;
+  const sameArtist = (name) => !artist || artistSimilarity(name || '', artist) >= 0.7;
+  const namedLikeSong = (name) => !!albumName && similarity(versionOf(name || '').base, versionOf(albumName).base) > 0.85;
+  // a full album always beats a single; then the album the song's own data names, then the closer match
+  const score = (album, songName, artistName, single) =>
+    (single ? 0 : 10) + (namedLikeSong(album) ? 2 : 0) + similarity(versionOf(songName || '').base, base) + (artist ? artistSimilarity(artistName || '', artist) : 1);
+  let best = null;
+  let bestScore = 0;
+  const offer = (album, s) => { if (s > bestScore) { best = album; bestScore = s; } };
+  const dz = (path) => fetchItunesJson(`https://api.deezer.com${path}`).catch(() => null);
   try {
-    const term = encodeURIComponent(`${artist} ${versionOf(title).base || title}`);
-    const lists = await Promise.all(['ru', 'us'].map(c => fetchItunesJson(`https://itunes.apple.com/search?entity=song&limit=25&country=${c}&term=${term}`).catch(() => null)));
-    const base = versionOf(title).base;
-    const isSingle = (x) => /\s-\s*(Single|EP)$/i.test(x.collectionName || '') || (x.trackCount || 0) < 4;
-    let best = null;
-    let bestScore = 0;
-    for (const x of lists.flatMap(d => (d && Array.isArray(d.results) ? d.results : []))) {
-      if (!x || x.collectionId == null || x.wrapperType !== 'track') continue;
-      const t = similarity(versionOf(x.trackName).base, base);
-      const a = artist ? artistSimilarity(x.artistName, artist) : 1;
-      if (t < 0.8 || a < 0.7) continue;
-      let score = t + a + (isSingle(x) ? 0 : 0.5);
-      if (albumName && similarity(versionOf(x.collectionName).base, versionOf(albumName).base) > 0.85) score += 1;
-      if (score > bestScore) { best = x; bestScore = score; }
+    const term = encodeURIComponent(`${artist} ${base}`);
+    const [itunes, deezer] = await Promise.all([
+      Promise.all(['ru', 'us'].map(c => fetchItunesJson(`https://itunes.apple.com/search?entity=song&limit=25&country=${c}&term=${term}`).catch(() => null))),
+      dz(`/search?limit=25&q=${term}`),
+    ]);
+    for (const x of itunes.flatMap(d => (d && Array.isArray(d.results) ? d.results : []))) {
+      if (!x || x.collectionId == null || x.wrapperType !== 'track' || !sameSong(x.trackName) || !sameArtist(x.artistName)) continue;
+      const single = /\s-\s*(Single|EP)$/i.test(x.collectionName || '') || (x.trackCount || 0) < 4;
+      offer({ ...albumOfItunes(x), single }, score(x.collectionName, x.trackName, x.artistName, single));
+    }
+    // Deezer's search doesn't say which albums are singles: the album itself does
+    const hits = ((deezer && deezer.data) || []).filter(t => t && t.album && sameSong(t.title) && sameArtist(t.artist && t.artist.name));
+    const ids = [...new Set(hits.map(t => t.album.id))].slice(0, 6);
+    const albums = (await Promise.all(ids.map(id => dz(`/album/${id}`)))).filter(a => a && a.id);
+    for (const a of albums) {
+      const hit = hits.find(t => t.album.id === a.id);
+      const al = albumOfDeezer(a, artist);
+      offer(al, score(a.title, hit.title, hit.artist && hit.artist.name, al.single));
+    }
+    // only a single so far: the song may still be on one of the artist's albums that search doesn't surface
+    const artistId = (hits[0] && hits[0].artist && hits[0].artist.id) || null;
+    if ((!best || best.single) && artistId) {
+      const list = await dz(`/artist/${artistId}/albums?limit=100`);
+      const full = ((list && list.data) || []).filter(a => a && a.record_type !== 'single').slice(0, 15);
+      const withTracks = await Promise.all(full.map(async a => ({ a, tracks: await dz(`/album/${a.id}/tracks?limit=200`) })));
+      for (const { a, tracks } of withTracks) {
+        const hit = ((tracks && tracks.data) || []).find(t => t && sameSong(t.title));
+        if (hit) offer(albumOfDeezer({ ...a, nb_tracks: tracks.total || tracks.data.length }, artist), score(a.title, hit.title, (hit.artist && hit.artist.name) || artist, false));
+      }
+    }
+    // the song itself is in neither catalogue: the album its own data names, looked up by name
+    if (!best && albumName) {
+      const found = await dz(`/search/album?limit=10&q=${encodeURIComponent(`${artist} ${albumName}`)}`);
+      const a = ((found && found.data) || []).find(x => x && namedLikeSong(x.title) && sameArtist(x.artist && x.artist.name));
+      if (a) best = albumOfDeezer(a, artist);
     }
     if (!best) return send(404, { success: false, error: 'Album not found' });
-    const body = {
-      success: true,
-      album: {
-        id: String(best.collectionId),
-        title: best.collectionName || '',
-        artist: best.collectionArtistName || best.artistName || '',
-        year: best.releaseDate ? best.releaseDate.slice(0, 4) : '',
-        trackCount: best.trackCount || 0,
-        cover: (best.artworkUrl100 || '').replace('100x100', '600x600'),
-      },
-    };
+    const { single, ...album } = best;
+    const body = { success: true, album };
     setAlbumCache(cacheKey, body);
     return send(200, body);
   } catch (err) {
@@ -4377,6 +4420,7 @@ async function handleAlbumOf(req, res, parsedUrl) {
 
 async function handleAlbumTracks(req, res, parsedUrl) {
   const id = (parsedUrl.query.id || '').trim();
+  if (/^dz:\d+$/.test(id)) return handleDeezerAlbumTracks(res, id);
   if (!/^\d+$/.test(id)) {
     res.writeHead(400, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ success: false, error: 'Invalid album id' }));
@@ -4452,6 +4496,36 @@ async function handleAlbumTracks(req, res, parsedUrl) {
     if (albumCache.get(cacheKey) === inFlightEntry) {
       albumCache.delete(cacheKey);
     }
+  }
+}
+
+// a Deezer album (ids "dz:<id>", from handleAlbumOf): the same shape as an iTunes one
+async function handleDeezerAlbumTracks(res, id) {
+  const send = (status, body) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
+  const cacheKey = `tracks:${id}`;
+  const cached = getAlbumCache(cacheKey);
+  if (cached) return send(200, cached);
+  try {
+    const n = id.slice(3);
+    const [a, list] = await Promise.all([
+      fetchItunesJson(`https://api.deezer.com/album/${n}`),
+      fetchItunesJson(`https://api.deezer.com/album/${n}/tracks?limit=200`),
+    ]);
+    if (!a || !a.id) return send(404, { success: false, error: 'Album not found' });
+    const { single, ...album } = albumOfDeezer(a);
+    const tracks = ((list && list.data) || []).map((t, i) => ({
+      no: t.track_position || i + 1,
+      disc: t.disk_number || 1,
+      title: t.title || '',
+      artist: (t.artist && t.artist.name) || album.artist,
+      durationMs: (t.duration || 0) * 1000,
+    }));
+    album.trackCount = tracks.length || album.trackCount;
+    const body = { success: true, album, tracks };
+    setAlbumCache(cacheKey, body);
+    return send(200, body);
+  } catch (err) {
+    return send(502, { success: false, error: 'Album service unavailable' });
   }
 }
 

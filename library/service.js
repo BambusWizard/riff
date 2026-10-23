@@ -124,6 +124,10 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
     try {
       const hit = await yandex.trackFor(song);
       if (!hit) return null;
+      // another song of the library has this very track (its other version, say): this one keeps its own source,
+      // so no version's file is ever another's
+      const other = store.bySource(`yandex:${hit.id}`);
+      if (other && other.id !== song.id) return null;
       const file = await yandex.download(hit.id, store.songsDir, song.id);
       store.addSource(song.id, `yandex:${hit.id}`, `https://music.yandex.ru/track/${hit.id}`);
       log(`y ${song.artist} - ${song.title}: from Yandex Music (${hit.title}${hit.explicit ? ', uncensored' : ''})`);

@@ -59,9 +59,10 @@ async function trackFor(song) {
   const p = parseName(song.title, song.artist);
   const want = versionOf(p.title);
   const wantVersion = want.version.replace(UNCENSORED, '').replace(/[\s·]+/g, ' ').trim();
+  const mustBeUncensored = UNCENSORED.test(want.version); // never the censored release for "Song (без цензуры)"
   let best = null;
   for (const x of await search(p.artist, want.base || p.title)) {
-    if (x.available === false) continue;
+    if (x.available === false || (mustBeUncensored && !isExplicit(x))) continue;
     const v = versionOf(titleOf(x));
     const version = v.version.replace(UNCENSORED, '').replace(/[\s·]+/g, ' ').trim();
     const t = similarity(v.base, want.base);

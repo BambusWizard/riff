@@ -292,15 +292,16 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
   try { useCatalog(JSON.parse(fs.readFileSync(CATALOG, 'utf8'))); } catch (e) {}
 
   // ---- playing: the phone's own copy first, then the PC's, then the service (bridge.js asks before stream-info) ----
-  // The phone's copy is wrong when the app had to cache a stand-in (Yandex, a SoundCloud search) because the song's
-  // own source failed (server.js marks those), or, for a version like "без цензуры", when it isn't the library's
-  // file (cached before the stand-ins were marked): then the PC's copy plays and takes its place in the cache
+  // The library's file is the one to keep: the PC chose it (Yandex's full MP3, the uncensored release, else the
+  // song's own source). The phone's copy is replaced when it isn't that file (another size: the app's own YouTube
+  // download, a stand-in cached because the song's own source failed, an older file the PC has since replaced):
+  // the PC's copy plays and takes its place in the cache
   const SUBSTITUTES = '/data/cache-substitutes.json';
   const substitutes = () => { try { return JSON.parse(fs.readFileSync(SUBSTITUTES, 'utf8')) || {}; } catch (e) { return {}; } };
   const CACHE_EXT = ['opus', 'webm', 'm4a', 'mp3', 'aac']; // what server.js findCachedFile plays
   const wrongCopy = (song, file, id) => {
     if (substitutes()[cleanId(id)]) return true;
-    if (!song.version || !song.size) return false;
+    if (!song.size) return false;
     try { return fs.statSync(file).size !== song.size; } catch (e) { return false; }
   };
   const replacing = new Set();

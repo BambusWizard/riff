@@ -28,6 +28,7 @@ const { Store } = require('./store');
 const downloader = require('./downloader');
 const { createNamer } = require('./metadata');
 const lookup = require('./lookup');
+const yandex = require('./yandex');
 const { versionOf } = require('./names');
 
 const DEFAULT_DIR = path.join(os.homedir(), 'Music', 'Riff Library');
@@ -57,6 +58,7 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
   const cfg = config || loadConfig(dir);
   const store = new Store(dir);
   const maxBytes = cfg.maxGB * 1024 ** 3;
+  yandex.configure(() => ({ worker: cfg.worker, key: cfg.workerKey }));
   const namer = createNamer({ store, lookup: { find, isSure: lookup.isSure }, ...(writeTags ? { writeTags } : {}), log, ...(namerGapMs !== undefined ? { gapMs: namerGapMs } : {}) });
 
   // ---- downloads: two at a time; a song the PC can't get waits for a phone to send its file ----
@@ -77,8 +79,8 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
     if (store.usedBytes() >= maxBytes) { store.setStatus(song.id, 'pending', 'library is full'); return; }
     try {
       if (ensureTools) { toolsReady = toolsReady || ensureTools(); await toolsReady; }
-      let file;
-      try {
+      let file = await fromYandex(song);
+      if (!file) try {
         const url = downloader.sourceUrl(song);
         if (!url) throw new Error('no source the PC can download from');
         file = await download(url, store.songsDir, song.id, { proxy: cfg.proxy });
@@ -112,6 +114,23 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
       store.setStatus(song.id, giveUp ? 'needs-file' : 'pending', e.message);
       log(`! ${song.artist} - ${song.title}: ${e.message}${giveUp ? ' (waiting for a phone to send it)' : ''}`);
       if (!giveUp) setTimeout(() => enqueue(store.get(song.id) || {}), retryMs * song.attempts);
+    }
+  }
+
+  // Yandex Music first, whatever site the song was played on: the release itself as a full MP3, and the uncensored
+  // one when there is one. Null when it can't be reached or hasn't the song; then the song's own source, YouTube...
+  async function fromYandex(song) {
+    if (!yandex.enabled()) return null;
+    try {
+      const hit = await yandex.trackFor(song);
+      if (!hit) return null;
+      const file = await yandex.download(hit.id, store.songsDir, song.id);
+      store.addSource(song.id, `yandex:${hit.id}`, `https://music.yandex.ru/track/${hit.id}`);
+      log(`y ${song.artist} - ${song.title}: from Yandex Music (${hit.title}${hit.explicit ? ', uncensored' : ''})`);
+      return file;
+    } catch (e) {
+      log(`! ${song.artist} - ${song.title}: Yandex Music: ${e.message}`);
+      return null;
     }
   }
 

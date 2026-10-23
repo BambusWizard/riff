@@ -2,9 +2,11 @@
 
 // Asks music catalogues what a song really is. Each one answers with candidates in the same shape:
 // { source, title, artist, album, year, cover, duration }. Catalogues that can't be reached (blocked, down) are
-// skipped. None needs an account. Yandex Music answers only Russian addresses, so from many PCs it is skipped.
+// skipped. None needs an account. Yandex Music answers only Russian addresses: with the Riff worker known it is
+// asked through it (yandex.js), otherwise directly, which from many PCs fails and is skipped.
 
 const { parseName, similarity, artistSimilarity } = require('./names');
+const yandex = require('./yandex');
 
 const UA = 'Riff-Library/1.0 (https://github.com/bambuswizard/riff)';
 
@@ -44,6 +46,7 @@ const catalogues = {
     }));
   },
   async yandex(artist, title) {
+    if (yandex.enabled()) return yandex.candidates(artist, title);
     const j = await getJson(`https://api.music.yandex.net/search?type=track&page=0&text=${encodeURIComponent(`${artist} ${title}`)}`);
     return ((((j.result || {}).tracks || {}).results) || []).slice(0, 5).map((x) => {
       const album = (x.albums || [])[0] || {};

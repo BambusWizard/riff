@@ -42,11 +42,12 @@ test('registering needs a valid access key, and only an https address is accepte
   assert.strictEqual((await worker.fetch(req('/__library', { method: 'POST', key: 'key-main', body: { url: 'http://evil.example/x?y' } }), e)).status, 400);
 });
 
-test('without an Origin only the registration is let through; the proxy and sync still are not', async () => {
+test('without an Origin only the registration and the proxy to Yandex Music are let through, and only with a key', async () => {
   const e = env();
   assert.strictEqual((await worker.fetch(req('/__library', { key: 'key-main' }), e)).status, 403);
   assert.strictEqual((await worker.fetch(req('/__sync', { key: 'key-main' }), e)).status, 403);
   assert.strictEqual((await worker.fetch(req('/__proxy?url=https://www.youtube.com/', { key: 'key-main' }), e)).status, 403);
+  assert.strictEqual((await worker.fetch(req('/__proxy?url=https://api.music.yandex.net/search', {}), e)).status, 401);
 });
 
 test('nothing registered yet: phones get an empty address', async () => {

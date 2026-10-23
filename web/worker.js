@@ -115,8 +115,9 @@ export default {
     const origins = String(env.ALLOWED_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
     const origin = req.headers.get('origin') || '';
     const u = new URL(req.url);
-    // the library service on the PC registers its address from outside a browser: no Origin, the key alone
-    const fromService = u.pathname === '/__library' && req.method === 'POST' && !origin;
+    // the library service on the PC works from outside a browser: no Origin, the key alone. It registers its address
+    // and reaches Yandex Music through the proxy as the phones do (library/yandex.js)
+    const fromService = !origin && ((u.pathname === '/__library' && req.method === 'POST') || u.pathname === '/__proxy');
     if (!fromService && !origins.includes(origin)) return new Response('origin not allowed', { status: 403 });
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(origin) });
 
@@ -139,7 +140,8 @@ export default {
     // follow redirects by hand so every hop is checked against the allow list
     let r;
     for (let hop = 0; hop < 6; hop++) {
-      if (target.protocol !== 'https:' || !hostAllowed(target.hostname)) {
+      // the PC service (no Origin) only ever needs Yandex Music's API
+      if (target.protocol !== 'https:' || !hostAllowed(target.hostname) || (!origin && !isYandex(target.hostname))) {
         return new Response(`host not allowed: ${target.hostname}`, { status: 403, headers: cors(origin) });
       }
       r = isYandex(target.hostname) && env.RU_RELAY_URL

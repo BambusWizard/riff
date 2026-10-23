@@ -33,11 +33,18 @@ catalog are mirrored there every 15 minutes; nothing is ever deleted from it).
 
 ## Names
 
-Each new song is looked up in iTunes, Deezer, MusicBrainz (and Yandex Music when the PC can reach it). A sure
+Each new song is looked up in Yandex Music, iTunes, Deezer and MusicBrainz. A sure
 match renames it ("Lida - Song" by "minecrafter" becomes "Song" by "Lida", with album, year and cover); an
 unsure one keeps the cleaned-up upload name and waits on the library page under **To check**, with the
 catalogues' guesses to pick from. Names you type or confirm are never changed again. The phones show these
 names in search, artist pages, likes, history and playlists.
+
+## Yandex Music
+
+Yandex answers only Russian addresses, so the service asks it through the Riff worker (with `workerKey`), as the
+phones do; a VPN on the PC doesn't matter. Every new song is first looked for there and kept as Yandex's full MP3
+(Plus), the uncensored release whenever there is one; only a song Yandex hasn't comes from where it was played
+or from YouTube.
 
 ## How the phones reach it
 

@@ -15659,6 +15659,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     prev: () => playPrev(true),
     openArtist: (name) => openArtistProfile(name),
     openAlbumOf: (track) => openAlbumOf(track),
+    trackRow: (track) => createTrackRow(track, 0, '', 'player', [track], null), // its menu, for the song playing
     play: (track) => playTrack(track, [track], 0, null),
   };
   window.dispatchEvent(new Event('riff:ready'));

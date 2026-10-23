@@ -715,3 +715,11 @@ html.is-mobile #album-detail-cover { width: min(70vw, 300px) !important; }
 html.is-mobile #album-detail-title { font-size: 24px !important; }
 html.is-mobile #album-detail-artist { text-align: center !important; }
 html.is-mobile #view-album .album-tracks-col { height: auto !important; overflow: visible !important; -webkit-mask-image: none !important; mask-image: none !important; }
+
+/* Now Playing header (close, lyrics on/off, lyrics settings, the song's menu): pinned to the very top of the
+   sheet, out of the column below, so lyrics opening or closing never moves it */
+html.is-mobile #right-panel > .right-panel-header {
+  position: absolute !important; top: calc(var(--safe-top) + 10px) !important; left: 20px !important; right: 20px !important;
+  margin: 0 !important; z-index: 5 !important;
+}
+html.is-mobile body #right-panel { padding-top: calc(var(--safe-top) + 58px) !important; }

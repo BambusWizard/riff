@@ -51,6 +51,14 @@ applyRowBadges();
     if (e.target.closest('button, input, .scrubber-track-container')) return;
     openSheet();
   });
+  const miniArtist = document.getElementById('playbar-artist');
+  if (miniArtist) {
+    miniArtist.addEventListener('click', (e) => {
+      if (document.body.classList.contains('np-open')) return;
+      e.stopImmediatePropagation();
+      if (Date.now() - swiped >= 400) openSheet();
+    }, true);
+  }
 
   // swipe the sheet down to close it. The sheet and its controls follow the finger 1:1 (no CSS transition
   // chasing it), and the app behind is shown while dragging (with the sheet open it is hidden to save work)
@@ -165,8 +173,9 @@ applyRowBadges();
   if (window.RiffCore) preferWordLyrics(); else window.addEventListener('riff:ready', preferWordLyrics, { once: true });
 
   // lyrics tools (edit / sync / translate / fullscreen) move up next to the Line/Word button,
-  // header: a chevron to close on the left; on the right "lyrics on/off" and a menu with the lyrics tools
-  // (edit, sync, translate, karaoke, word/line). The menu presses the real buttons, so their handlers keep working
+  // header: a chevron to close on the left; on the right "lyrics on/off", a gear with the lyrics tools (edit, sync,
+  // translate, karaoke, word/line) and three dots with the song's own menu (the one a long press on its row opens).
+  // The menus press the real buttons, so their handlers keep working
   const topRow = panel.querySelector('.right-panel-header-actions');
   const closeBtn = document.getElementById('btn-close-right-panel');
   if (topRow && closeBtn) {
@@ -187,13 +196,13 @@ applyRowBadges();
     });
     applyLyrics();
 
-    const more = document.createElement('button');
-    more.type = 'button';
-    more.className = 'np-head-btn';
-    more.id = 'np-more';
-    more.setAttribute('aria-label', 'More');
-    more.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>';
-    more.addEventListener('click', () => {
+    const gear = document.createElement('button');
+    gear.type = 'button';
+    gear.className = 'np-head-btn';
+    gear.id = 'np-lyrics-settings';
+    gear.setAttribute('aria-label', 'Lyrics settings');
+    gear.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
+    gear.addEventListener('click', () => {
       const modeBtn = document.getElementById('btn-lyrics-mode');
       const items = [
         ['btn-lyrics-mode', `Lyrics mode: ${(modeBtn && modeBtn.textContent.trim()) || 'Word'}`],
@@ -213,7 +222,19 @@ applyRowBadges();
       });
       document.body.appendChild(sheet);
     });
-    topRow.append(toggle, more);
+
+    const more = document.createElement('button');
+    more.type = 'button';
+    more.className = 'np-head-btn';
+    more.id = 'np-more';
+    more.setAttribute('aria-label', 'More');
+    more.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>';
+    more.addEventListener('click', () => {
+      const core = window.RiffCore;
+      const t = core && core.state.currentTrack;
+      if (t && core.trackRow && window.RiffRowMenu) window.RiffRowMenu(core.trackRow(t), true);
+    });
+    topRow.append(toggle, gear, more);
   }
 
   // like button next to the title in Now Playing (the player bar's heart is hidden on phones);
@@ -596,11 +617,11 @@ applyRowBadges();
     const lib = window.RiffLibrary;
     return (lib && lib.versions && lib.versions.of(row.dataset.trackPlatform, row.dataset.trackId)) || null;
   };
-  const open = (row) => {
+  const open = (row, playing = false) => {
     const items = ACTIONS.filter(([sel]) => row.querySelector(sel));
     const v = libraryVersions(row);
     const core = window.RiffCore;
-    const album = row._track && core && core.openAlbumOf && core.state.currentView !== 'album';
+    const album = row._track && core && core.openAlbumOf && (playing || core.state.currentView !== 'album');
     if (!items.length && !v && !album) return;
     const el = sheetFor(row.dataset.trackTitle, row.dataset.trackArtist,
       (album ? '<button type="button" data-album="1">Go to album</button>' : '')
@@ -608,7 +629,12 @@ applyRowBadges();
       + items.map(([, label], i) => `<button type="button" data-i="${i}">${label}</button>`).join(''));
     el.addEventListener('click', (e) => {
       const b = e.target.closest('button[data-i]');
-      if (e.target.closest('button[data-album]')) { close(); core.openAlbumOf(row._track); }
+      if (e.target.closest('button[data-album]')) {
+        close();
+        const np = document.getElementById('btn-close-right-panel');
+        if (playing && np && document.body.classList.contains('np-open')) np.click();
+        core.openAlbumOf(row._track);
+      }
       else if (e.target.closest('button[data-v]')) openVersions(row);
       else if (b) { const real = row.querySelector(items[b.dataset.i][0]); close(); if (real) real.click(); }
       else if (!e.target.closest('.row-sheet-card')) close();
@@ -654,6 +680,8 @@ applyRowBadges();
       else if (b.dataset.more) openVersions(row, true);
     });
   };
+
+  window.RiffRowMenu = open; // the three dots in Now Playing
 
   let timer = null, x0 = 0, y0 = 0, fired = 0;
   const cancel = () => { clearTimeout(timer); timer = null; };

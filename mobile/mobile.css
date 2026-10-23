@@ -704,3 +704,14 @@ html.is-mobile .my-wave-actions #btn-play-my-wave span { display: none; }
 /* settings tabs that do nothing on a phone (desktop plugins, custom theme files, the desktop app's About) */
 html.is-mobile .settings-nav-btn:is([data-cat="plugins"], [data-cat="custom-themes"], [data-cat="about"]),
 html.is-mobile .settings-section:is([data-cat="plugins"], [data-cat="custom-themes"], [data-cat="about"]) { display: none !important; }
+
+/* ---------- album page: one scroll for the cover, its name and the songs (the desktop's own scrolling column
+   of songs beside a fixed cover has no room on a phone) ---------- */
+html.is-mobile .main-content:has(#view-album.active) { overflow-y: auto !important; padding-bottom: 24px !important; }
+html.is-mobile #view-album.active { display: block !important; height: auto !important; overflow: visible !important; }
+html.is-mobile #view-album .album-layout { display: block !important; padding: 0 !important; }
+html.is-mobile #view-album .album-side { max-width: none !important; align-items: center !important; text-align: center; margin-bottom: 20px; gap: 8px !important; }
+html.is-mobile #album-detail-cover { width: min(70vw, 300px) !important; }
+html.is-mobile #album-detail-title { font-size: 24px !important; }
+html.is-mobile #album-detail-artist { text-align: center !important; }
+html.is-mobile #view-album .album-tracks-col { height: auto !important; overflow: visible !important; -webkit-mask-image: none !important; mask-image: none !important; }

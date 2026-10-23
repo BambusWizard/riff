@@ -22,6 +22,9 @@
 const ROW_BADGES = 'riff_row_badges';
 const rowBadgesOn = () => { try { return localStorage.getItem(ROW_BADGES) !== '0'; } catch (e) { return true; } };
 const applyRowBadges = () => document.body.classList.toggle('no-row-badges', !rowBadgesOn());
+// the source icon of a song the PC library has is a cloud instead (off: always the service's icon)
+const PC_BADGES = 'riff_pc_badges';
+const pcBadgesOn = () => { try { return localStorage.getItem(PC_BADGES) === '1'; } catch (e) { return false; } };
 applyRowBadges();
 
 (() => {
@@ -366,6 +369,23 @@ applyRowBadges();
       badgesSwitch.classList.toggle('active', on);
       applyRowBadges();
     });
+    const pcRow = document.createElement('div');
+    pcRow.className = 'setting-item';
+    pcRow.innerHTML = `
+      <div class="setting-item-top" style="align-items: center;">
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <span class="setting-name">Show songs saved on the PC</span>
+          <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">A cloud instead of the YouTube / Yandex / SoundCloud icon when the song is in your PC library.</span>
+        </div>
+        <button class="effect-switch-btn${pcBadgesOn() ? ' active' : ''}" type="button"><span class="thumb"></span></button>
+      </div>`;
+    const pcSwitch = pcRow.querySelector('button');
+    pcSwitch.addEventListener('click', () => {
+      const on = !pcBadgesOn();
+      try { localStorage.setItem(PC_BADGES, on ? '1' : '0'); } catch (e) {}
+      pcSwitch.classList.toggle('active', on);
+      window.dispatchEvent(new CustomEvent('riff:pc-badges'));
+    });
     // stable / nightly (only on the GitHub Pages build, where both are deployed)
     const channel = (document.querySelector('meta[name="riff-channel"]') || {}).content || '';
     if (channel) {
@@ -419,7 +439,7 @@ applyRowBadges();
     window.addEventListener('riff:library', (e) => showLib(e.detail));
     libRow.querySelector('button').addEventListener('click', () => { if (window.RiffLibrary) window.RiffLibrary.run(); });
     setTimeout(() => showLib(window.RiffLibrary && window.RiffLibrary.status()), 1000);
-    storageGroup.append(libRow, limitRow, badgesRow, logRow);
+    storageGroup.append(libRow, limitRow, badgesRow, pcRow, logRow);
   }
 
   // artist bio is clamped to 3 lines on phones; tapping it expands / collapses
@@ -505,15 +525,29 @@ applyRowBadges();
     dl.innerHTML = down ? ON_PHONE : '';
   };
   const isDown = (id) => (window.RiffIsDownloaded ? window.RiffIsDownloaded(id) : false);
+  const CLOUD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 9.5a4.25 4.25 0 0 1-.5 8.5z"/></svg>';
+  const setSource = (src, platform, id) => {
+    const p = SOURCES[platform] ? platform : 'youtube';
+    const pc = p !== 'local' && pcBadgesOn() && window.RiffLibrary && window.RiffLibrary.onPc({ platform, id });
+    src.classList.toggle('pc', !!pc);
+    src.title = pc ? `On the PC (${SOURCES[p][0]})` : SOURCES[p][0];
+    src.innerHTML = pc ? CLOUD : SOURCES[p][1];
+  };
   window.RiffDecorateRow = (row, track) => {
     const p = SOURCES[track.platform] ? track.platform : 'youtube';
     const col = document.createElement('div');
     col.className = 'track-row-badges';
-    col.innerHTML = `<span class="trb-src" title="${SOURCES[p][0]}">${SOURCES[p][1]}</span><span class="trb-dl"></span>`;
+    col.innerHTML = '<span class="trb-src"></span><span class="trb-dl"></span>';
+    col.dataset.platform = p;
+    setSource(col.querySelector('.trb-src'), p, track.id);
     if (p !== 'local') col.dataset.id = track.id || '';
     setDownloaded(col.querySelector('.trb-dl'), p === 'local' || isDown(track.id));
     row.appendChild(col);
   };
+  // the switch was flipped or a new catalog came: the clouds on rows already on screen follow
+  const resource = () => document.querySelectorAll('.track-row-badges[data-id]').forEach((col) => setSource(col.querySelector('.trb-src'), col.dataset.platform, col.dataset.id));
+  window.addEventListener('riff:pc-badges', resource);
+  window.addEventListener('riff:library-versions', () => setTimeout(resource, 0));
   // a download finished (or was removed): rows already on screen update without re-rendering the list
   let refresh = null;
   window.addEventListener('riff:tracks-changed', () => {

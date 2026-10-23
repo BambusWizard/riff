@@ -492,6 +492,8 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
     adjust,
     versions,
     collapseLikes,
+    // the PC has its own copy of this song (the cloud mark on rows)
+    onPc: (t) => { const song = t && bySource.get(keyOf(t)); return !!(song && song.ready); },
     status: () => ({ ...status }),
     run,
     // cleanIds of songs whose files must stay until the PC has them (cache-limit.js)

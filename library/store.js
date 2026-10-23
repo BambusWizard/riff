@@ -244,6 +244,8 @@ class Store {
         named: !!s.match && (['auto', 'confirmed'].includes(s.match.status) || s.title !== s.original.title || s.artist !== s.original.artist),
         // the PC's copy was found on YouTube by name: a phone that has the file of the song itself sends it
         ...(s.found && !s.fromPhone ? { guess: true } : {}),
+        // the PC keeps the cover itself (/songs/<id>/cover): phones show it from there, not from the catalogue's site
+        ...(fs.existsSync(path.join(this.dir, 'covers', `${s.id}.jpg`)) ? { coverFile: true } : {}),
       })),
     };
   }

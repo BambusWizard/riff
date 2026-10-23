@@ -10,6 +10,7 @@ const QUEUE = 'riff_library_queue'; // device only (bridge.js DEVICE_ONLY)
 const NAMES = 'riff_library_names'; // device only: our names for the songs the library knows, by "platform:id"
 const LIKES_QUEUED = 'riff_library_likes_queued'; // device only: this phone's old likes went into the queue
 const CATALOG = '/data/library/catalog.json';
+const COVER_CACHE = 'library-covers'; // read by sw.js
 const TRACKS = '/data/tracks';
 const MAX_AGE = 60 * 24 * 3600 * 1000; // a song nobody can get to the PC is dropped from the queue after 60 days
 const LISTS = ['devsize_favorites', 'devsize_history', 'devsize_playlists'];
@@ -197,6 +198,27 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
   };
   const pcOnline = () => lastPc && status.state === 'online' && Date.now() - status.at < 5 * 60 * 1000;
 
+  // The library's covers come from the PC and are kept on the phone under the song's cover address, so sw.js shows
+  // them offline and even when that site (Cover Art Archive, iTunes...) can't be reached from here
+  const saveCovers = async (pc, catalog) => {
+    if (!window.caches) return;
+    const c = await caches.open(COVER_CACHE);
+    const want = new Map();
+    for (const song of catalog.songs) {
+      if (!song.coverFile || !/^https:/.test(song.cover || '')) continue;
+      try { want.set(new URL(song.cover).href, song); } catch (e) {}
+    }
+    for (const req of await c.keys()) if (!want.has(req.url)) await c.delete(req);
+    for (const [url, song] of want) {
+      if (await c.match(url)) continue;
+      try {
+        const r = await pageFetch(`${pc.url}/songs/${song.id}/cover`, { headers: { 'x-riff-key': pc.key } });
+        if (!r.ok) continue;
+        await c.put(url, new Response(await r.blob(), { headers: { 'Content-Type': r.headers.get('content-type') || 'image/jpeg' } }));
+      } catch (e) {}
+    }
+  };
+
   let running = false;
   const uploadFailed = new Set();
   const run = async () => {
@@ -238,6 +260,7 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
       fs.mkdirSync('/data/library', { recursive: true });
       fs.writeFileSync(CATALOG, JSON.stringify(catalog));
       useCatalog(catalog);
+      await saveCovers(pc, catalog);
       lastPc = pc;
       Object.assign(status, { state: 'online', at: Date.now(), error: '' });
     } catch (e) {

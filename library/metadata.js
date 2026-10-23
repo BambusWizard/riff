@@ -5,6 +5,7 @@
 // the catalogues' best guesses kept to pick from. Then the names go into the file itself (tags.js).
 // One song at a time, a second apart: MusicBrainz asks for no more than one request a second.
 
+const fs = require('fs');
 const path = require('path');
 
 const pickFields = (c) => ({ title: c.title, artist: c.artist, album: c.album, year: c.year, cover: c.cover });
@@ -33,11 +34,15 @@ function createNamer({ store, lookup = require('./lookup'), writeTags = require(
     }
   }
 
+  // the cover is kept as a file too (phones get it from here); a cover that couldn't be fetched isn't asked for again
+  const coverKept = (s) => !s.cover || s.coverFailed === s.cover || fs.existsSync(path.join(store.dir, 'covers', `${s.id}.jpg`));
   async function tag(id) {
     const s = store.get(id);
-    if (!s || s.status !== 'ready' || !s.match || s.tagged === stamp(s)) return;
+    if (!s || s.status !== 'ready' || !s.match) return;
+    if (s.tagged === stamp(s) && coverKept(s)) return;
     const size = await writeTags(store.filePath(s), s, s.cover, path.join(store.dir, 'covers'));
-    if (size) store.setTagged(s.id, stamp(s), size);
+    if (!coverKept(s)) s.coverFailed = s.cover;
+    if (size) store.setTagged(s.id, stamp(s), size); else store.save();
   }
 
   async function pump() {
@@ -59,7 +64,7 @@ function createNamer({ store, lookup = require('./lookup'), writeTags = require(
 
   // a new song, a song whose file just arrived, or names edited by hand: (re)named and (re)tagged as needed
   const add = (id) => { if (!queue.includes(id)) queue.push(id); pump(); };
-  const needsWork = (s) => (!s.locked && !s.match) || (s.status === 'ready' && s.match && s.tagged !== stamp(s));
+  const needsWork = (s) => (!s.locked && !s.match) || (s.status === 'ready' && s.match && (s.tagged !== stamp(s) || !coverKept(s)));
 
   return { add, needsWork, idle: () => !busy && queue.length === 0, pickFields };
 }

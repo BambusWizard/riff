@@ -13,8 +13,15 @@ async function fetchCover(url, dest) {
   if (!url) return null;
   try {
     const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
-    if (!r.ok || !/^image\/(jpeg|png)/.test(r.headers.get('content-type') || '')) return null;
-    fs.writeFileSync(dest, Buffer.from(await r.arrayBuffer()));
+    const type = r.headers.get('content-type') || '';
+    if (!r.ok || !/^image\/(jpeg|png|webp)/.test(type)) return null;
+    if (!type.includes('webp')) { fs.writeFileSync(dest, Buffer.from(await r.arrayBuffer())); return dest; }
+    // YouTube's covers are WebP, which neither the files nor every phone take: turned into a JPEG
+    const ffmpeg = resolveBinary('ffmpeg');
+    if (!ffmpeg) return null;
+    const webp = `${dest}.webp`;
+    fs.writeFileSync(webp, Buffer.from(await r.arrayBuffer()));
+    try { await run(ffmpeg, ['-y', '-v', 'error', '-i', webp, dest]); } finally { fs.rmSync(webp, { force: true }); }
     return dest;
   } catch (e) { return null; }
 }
@@ -36,7 +43,9 @@ async function writeTags(file, meta, coverUrl, coversDir) {
   const ext = path.extname(file).toLowerCase();
   const base = path.basename(file, ext);
   fs.mkdirSync(coversDir, { recursive: true });
-  const cover = ['.m4a', '.mp3'].includes(ext) ? await fetchCover(coverUrl, path.join(coversDir, `${base}.jpg`)) : null;
+  // the cover is kept for every song (phones get it from here); only m4a and mp3 can carry it inside
+  const saved = await fetchCover(coverUrl, path.join(coversDir, `${base}.jpg`));
+  const cover = ['.m4a', '.mp3'].includes(ext) ? saved : null;
   const tmp = path.join(path.dirname(file), `${base}.part-tags${ext}`); // cleaned up at start if cut off (store.js)
   const args = ['-y', '-v', 'error', '-i', file];
   if (cover) args.push('-i', cover, '-map', '0:a', '-map', '1:v', '-c', 'copy', '-disposition:v:0', 'attached_pic');

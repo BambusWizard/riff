@@ -12,6 +12,7 @@ const FONTS = /^https:\/\/fonts\.(googleapis|gstatic)\.com$/;
 const COVERS = 'covers';
 const COVERS_CORS = 'covers-cors';
 const MAX_COVERS = 1500;
+const LIBRARY_COVERS = 'library-covers';
 
 self.addEventListener('install', (e) => {
   // the page is fetched as index.html?v=VERSION: without the query the CDN may still hand out the previous build's page
@@ -74,6 +75,8 @@ const trim = (name) => {
 };
 
 async function cover(req) {
+  const own = await (await caches.open(LIBRARY_COVERS)).match(req.url); // the PC library's copy (library-sync.js)
+  if (own) return own;
   const name = req.mode === 'cors' ? COVERS_CORS : COVERS;
   const c = await caches.open(name);
   const hit = await c.match(req);

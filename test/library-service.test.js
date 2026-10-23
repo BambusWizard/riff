@@ -297,3 +297,14 @@ test('versions of a song form one group; by hand a song joins another or stands 
   await api(`/songs/${piano}/group`, { method: 'POST', body: { with: 'auto' } });
   assert.strictEqual((await groups())[piano][0], plain);
 });
+
+test('the catalog says which songs the PC keeps the cover of', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'riff-lib-'));
+  const store = new Store(dir);
+  const { song: a } = store.ingest({ platform: 'youtube', id: 'a', title: 'A', artist: 'X' });
+  store.ingest({ platform: 'youtube', id: 'b', title: 'B', artist: 'X' });
+  fs.mkdirSync(path.join(dir, 'covers'));
+  fs.writeFileSync(path.join(dir, 'covers', `${a.id}.jpg`), 'jpg');
+  assert.deepStrictEqual(store.catalog().songs.map((s) => !!s.coverFile), [true, false]);
+  fs.rmSync(dir, { recursive: true, force: true });
+});

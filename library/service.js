@@ -123,13 +123,13 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
     if (!yandex.enabled()) return null;
     try {
       const hit = await yandex.trackFor(song);
-      if (!hit) return null;
       // another song of the library has this very track (its other version, say): this one keeps its own source,
       // so no version's file is ever another's
-      const other = store.bySource(`yandex:${hit.id}`);
-      if (other && other.id !== song.id) return null;
+      const other = hit && store.bySource(`yandex:${hit.id}`);
+      if (!hit || (other && other.id !== song.id)) { song.yandexChecked = Date.now(); store.save(); return null; }
       const file = await yandex.download(hit.id, store.songsDir, song.id);
       store.addSource(song.id, `yandex:${hit.id}`, `https://music.yandex.ru/track/${hit.id}`);
+      song.yandexChecked = Date.now();
       log(`y ${song.artist} - ${song.title}: from Yandex Music (${hit.title}${hit.explicit ? ', uncensored' : ''})`);
       return file;
     } catch (e) {
@@ -137,6 +137,52 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
       return null;
     }
   }
+
+  // ---- the songs kept before Yandex could be reached: each becomes Yandex's MP3 (the uncensored release first)
+  // where Yandex has it. One song at a time and only while nothing else downloads; each is looked at once
+  // (yandexChecked), except when Yandex couldn't be asked. The phones replace their copies as they play them ----
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  let upgrading = false;
+  async function upgradeLibrary() {
+    if (upgrading || !yandex.enabled()) return;
+    upgrading = true;
+    let replaced = 0;
+    try {
+      // songs named uncensored first: they get their track before a plain song of the same group could take it
+      const order = store.songs.slice().sort((a, b) => lookup.UNCENSORED.test(b.title) - lookup.UNCENSORED.test(a.title));
+      for (const s of order) {
+        if (s.status !== 'ready' || s.yandexChecked || store.get(s.id) !== s) continue;
+        while (active.size || queue.length) await sleep(5000);
+        if (store.usedBytes() >= maxBytes) break;
+        let hit;
+        try { hit = await yandex.trackFor(s); } catch (e) { log(`! library pass: Yandex Music: ${e.message}`); break; }
+        const key = hit && `yandex:${hit.id}`;
+        const other = key && store.bySource(key);
+        // a file that is Yandex's already (a phone sent it) is only swapped for the uncensored release
+        const fromYandexAlready = s.file && s.file.format === 'mp3' && s.sources.some((k) => k.startsWith('yandex:'));
+        const already = key && fromYandexAlready && (s.sources.includes(key) || !hit.explicit);
+        if (hit && !already && !(other && other.id !== s.id)) {
+          try {
+            const file = await yandex.download(hit.id, store.songsDir, s.id);
+            store.setFile(s.id, file.name, file.size);
+            store.addSource(s.id, key, `https://music.yandex.ru/track/${hit.id}`);
+            s.tagged = ''; // the new file gets our names and cover written into it (and the phones see its new size)
+            namer.add(s.id);
+            replaced += 1;
+            log(`y ${s.artist} - ${s.title}: now Yandex Music's (${hit.title}${hit.explicit ? ', uncensored' : ''})`);
+          } catch (e) { log(`! ${s.artist} - ${s.title}: Yandex Music: ${e.message}`); await sleep(2000); continue; }
+        }
+        s.yandexChecked = Date.now();
+        store.save();
+        await sleep(1500);
+      }
+    } finally {
+      upgrading = false;
+      if (replaced) log(`library pass: ${replaced} songs are now Yandex Music's`);
+    }
+  }
+  setTimeout(upgradeLibrary, 30 * 1000).unref?.();
+  setInterval(upgradeLibrary, 6 * 3600 * 1000).unref?.();
 
   // at start: what was left to download, and songs given up on before the PC could look for them on YouTube
   for (const s of store.songs) {

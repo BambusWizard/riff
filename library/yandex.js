@@ -70,7 +70,9 @@ async function trackFor(song) {
     const dur = Math.round((x.durationMs || 0) / 1000);
     if (t < 0.85 || a < 0.7 || similarity(version, wantVersion) < (version || wantVersion ? 0.8 : 0)) continue;
     if (song.duration && dur && Math.abs(song.duration - dur) > Math.max(10, song.duration * 0.06)) continue;
-    const s = t + a + (isExplicit(x) ? 2 : 0);
+    // the song's own track (the one a phone played) over the same recording on another release
+    const own = (song.sources || []).includes(`yandex:${x.id}`);
+    const s = t + a + (isExplicit(x) ? 2 : 0) + (own ? 0.5 : 0);
     if (!best || s > best.s) best = { s, id: String(x.id), explicit: isExplicit(x), title: titleOf(x) };
   }
   return best;

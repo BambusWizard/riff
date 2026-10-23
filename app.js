@@ -6188,6 +6188,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       row.dataset.trackPlatform = track.platform || '';
       row.dataset.trackTitle = track.title || '';
       row.dataset.trackArtist = track.artist || '';
+      row._track = track; // the long-press menu on phones opens the song's album from it
 
       row.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {

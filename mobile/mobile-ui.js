@@ -572,7 +572,7 @@ applyRowBadges();
   });
 })();
 
-// the row's other actions (add to playlist, download, remove) are a long press away, so a row only shows the like
+// the row's other actions (its album, add to playlist, download, remove) are a long press away, so a row only shows the like
 (() => {
   const ACTIONS = [
     ['.btn-row-add-playlist', 'Add to playlist'],
@@ -599,13 +599,17 @@ applyRowBadges();
   const open = (row) => {
     const items = ACTIONS.filter(([sel]) => row.querySelector(sel));
     const v = libraryVersions(row);
-    if (!items.length && !v) return;
+    const core = window.RiffCore;
+    const album = row._track && core && core.openAlbumOf && core.state.currentView !== 'album';
+    if (!items.length && !v && !album) return;
     const el = sheetFor(row.dataset.trackTitle, row.dataset.trackArtist,
-      (v ? `<button type="button" data-v="1">Versions${v.songs.length > 1 ? ` (${v.songs.length})` : ''}</button>` : '')
+      (album ? '<button type="button" data-album="1">Go to album</button>' : '')
+      + (v ? `<button type="button" data-v="1">Versions${v.songs.length > 1 ? ` (${v.songs.length})` : ''}</button>` : '')
       + items.map(([, label], i) => `<button type="button" data-i="${i}">${label}</button>`).join(''));
     el.addEventListener('click', (e) => {
       const b = e.target.closest('button[data-i]');
-      if (e.target.closest('button[data-v]')) openVersions(row);
+      if (e.target.closest('button[data-album]')) { close(); core.openAlbumOf(row._track); }
+      else if (e.target.closest('button[data-v]')) openVersions(row);
       else if (b) { const real = row.querySelector(items[b.dataset.i][0]); close(); if (real) real.click(); }
       else if (!e.target.closest('.row-sheet-card')) close();
     });

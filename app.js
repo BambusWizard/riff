@@ -5924,17 +5924,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         throw new Error(data && data.error ? data.error : 'Failed to load album tracks');
       }
 
-      // the user's own songs first, each standing in for the album's song of that name
-      const listed = data.tracks.slice();
-      const own = known.map((k, i) => {
-        const at = listed.findIndex((t) => normalizeMatchText(t.title) === normalizeMatchText(k.title));
-        const t = at >= 0 ? listed.splice(at, 1)[0] : { title: k.title, artist: k.artist, durationMs: (Number(k.duration) || 0) * 1000, no: `own${i}` };
-        albumResolved.set(`${album.id || ''}:${t.no != null ? t.no : 1}`, k);
-        return { t, real: k };
-      });
-      const ownBy = new Map(own.map((x) => [x.t, x.real]));
-      const tracks = [...own.map((x) => x.t), ...listed];
       const albumArtist = (data.album && data.album.artist) || album.artist || '';
+      // the album as it was made, in its order; a song the user already has (the library's, a download, a like,
+      // the one playing) stands in for the album's song in its place and plays as itself
+      const lib = window.RiffLibrary;
+      const same = lib && lib.sameSong ? lib.sameSong : (a, b) => normalizeMatchText(a.title) === normalizeMatchText(b.title);
+      const mine = [...known, ...(state.localTracks || []), ...(state.favorites || []), ...(lib && lib.songsBy ? lib.songsBy(albumArtist) : [])];
+      const tracks = data.tracks.length
+        ? data.tracks.slice()
+        : known.map((k, i) => ({ title: k.title, artist: k.artist, durationMs: (Number(k.duration) || 0) * 1000, no: i + 1 }));
+      const ownBy = new Map();
+      for (const t of tracks) {
+        const real = mine.find((m) => m && same(m, { title: t.title, artist: t.artist || albumArtist }));
+        if (!real) continue;
+        ownBy.set(t, real);
+        albumResolved.set(`${album.id || ''}:${t.no != null ? t.no : 1}`, real);
+      }
       const albumYear = (data.album && data.album.year) || album.year || '';
 
       if (artistBtn && albumArtist) {

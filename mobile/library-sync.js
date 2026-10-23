@@ -528,6 +528,9 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
     collapseLikes,
     // the PC has its own copy of this song (the cloud mark on rows)
     albumOf,
+    // the album page: is a song the user has (its site's name) this song of the album; the artist's library songs
+    sameSong,
+    songsBy: (artist) => songsBy(artist).map(asTrack),
     onPc: (t) => { const song = t && bySource.get(keyOf(t)); return !!(song && song.ready); },
     status: () => ({ ...status }),
     run,

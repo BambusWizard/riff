@@ -101,11 +101,13 @@ class Store {
   }
 
   // the audio file is in songs/ under the song's id; replaces an older file of another format
-  setFile(id, name, size) {
+  // from: where the file came from, when it is Yandex Music ("yandex"): Yandex mutes swear words into a mush, so
+  // its file never takes the place of another site's (here or on a phone)
+  setFile(id, name, size, from = '') {
     const song = this.get(id);
     if (!song) return null;
     if (song.file && song.file.name !== name) { try { fs.unlinkSync(path.join(this.songsDir, song.file.name)); } catch (e) {} }
-    song.file = { name, size, format: path.extname(name).slice(1) };
+    song.file = { name, size, format: path.extname(name).slice(1), ...(from ? { from } : {}) };
     song.status = 'ready';
     song.error = '';
     this.save();
@@ -239,7 +241,9 @@ class Store {
         group: groups.get(s.id), version: versionOf(s.title).version,
         id: s.id, title: s.title, artist: s.artist, album: s.album, year: s.year, cover: s.cover, duration: s.duration,
         sources: s.sources, url: s.urls[s.sources[0]] || '', ready: s.status === 'ready',
-        size: s.file ? s.file.size : 0, format: s.file ? s.file.format : '', // our names reach the phones once a catalogue is sure, by hand, or when even the unsure guess fixed the upload's
+        size: s.file ? s.file.size : 0, format: s.file ? s.file.format : '',
+        // the file is Yandex's (older files: an MP3 of a song played there)
+        ...(s.file && (s.file.from === 'yandex' || (!s.file.from && s.file.format === 'mp3' && s.sources.some((k) => k.startsWith('yandex:')))) ? { yandexFile: true } : {}), // our names reach the phones once a catalogue is sure, by hand, or when even the unsure guess fixed the upload's
         // ("МУККА - Song" by the channel "magic boy" is "Song" by "МУККА" whether or not a catalogue knows it)
         named: !!s.match && (['auto', 'confirmed'].includes(s.match.status) || s.title !== s.original.title || s.artist !== s.original.artist),
         // the PC's copy was found on YouTube by name: a phone that has the file of the song itself sends it

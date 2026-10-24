@@ -174,10 +174,10 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
       return name ? `${TRACKS}/${name}` : null;
     } catch (e) { return null; }
   };
-  const upload = async (pc, songId, file) => {
+  const upload = async (pc, songId, file, platform = '') => {
     const blob = await (await pageFetch(await fileUrlFor(file))).blob();
     const ext = file.slice(file.lastIndexOf('.') + 1);
-    await call(pc, `/songs/${songId}/file?ext=${encodeURIComponent(ext)}`, { method: 'PUT', body: blob }, 120000);
+    await call(pc, `/songs/${songId}/file?ext=${encodeURIComponent(ext)}&from=${encodeURIComponent(platform)}`, { method: 'PUT', body: blob }, 120000);
   };
 
   // ---- the catalog: our names, and which songs the PC can play ----
@@ -240,7 +240,7 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
           const r = await call(pc, '/ingest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...item, hasFile }) });
           if (r.needFile && file) {
             // a file the PC refuses (too big, broken) isn't offered again: then the PC gets the song itself
-            try { await upload(pc, r.id, file); } catch (e) { uploadFailed.add(keyOf(item)); throw e; }
+            try { await upload(pc, r.id, file, item.platform); } catch (e) { uploadFailed.add(keyOf(item)); throw e; }
             done = true;
             log(`library: sent ${item.artist} - ${item.title}`);
           }
@@ -253,10 +253,11 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
       // songs the PC found on YouTube by name, which this phone has from where they played
       for (const song of catalog.songs) {
         if (!song.guess) continue;
-        const own = song.sources.map((k) => k.split(/:(.*)/)).find(([p]) => p !== 'youtube');
+        // never a Yandex file for it: Yandex mutes swear words, the copy found may be uncensored
+        const own = song.sources.map((k) => k.split(/:(.*)/)).find(([p]) => p !== 'youtube' && p !== 'yandex');
         const file = own && !uploadFailed.has(`${own[0]}:${own[1]}`) && localFile({ id: own[1] });
         if (!file) continue;
-        try { await upload(pc, song.id, file); song.guess = false; log(`library: sent ${song.artist} - ${song.title}`); } catch (e) { uploadFailed.add(`${own[0]}:${own[1]}`); }
+        try { await upload(pc, song.id, file, own[0]); song.guess = false; log(`library: sent ${song.artist} - ${song.title}`); } catch (e) { uploadFailed.add(`${own[0]}:${own[1]}`); }
       }
       fs.mkdirSync('/data/library', { recursive: true });
       fs.writeFileSync(CATALOG, JSON.stringify(catalog));
@@ -327,6 +328,8 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
     const q = new URL(url).searchParams;
     const song = bySource.get(`${q.get('platform') || 'youtube'}:${q.get('id')}`);
     if (!song || !song.ready) return null;
+    // the library's file is Yandex's (swear words muted) and this is another site's song: that site's copy plays
+    if (song.yandexFile && (q.get('platform') || 'youtube') !== 'yandex') return null;
     const local = localFile({ id: q.get('id') });
     if (local && !wrongCopy(song, local, q.get('id'))) return null;
     // a song heard is kept on the phone like any other (it then plays from here, offline too): the PC's copy is

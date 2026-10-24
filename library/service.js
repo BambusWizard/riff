@@ -105,7 +105,7 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
         log(`? ${song.artist} - ${song.title}: found on YouTube (${found.id})`);
         file = await download(found.url, store.songsDir, song.id, { proxy: cfg.proxy });
       }
-      store.setFile(song.id, file.name, file.size);
+      store.setFile(song.id, file.name, file.size, file.from);
       log(`+ ${song.artist} - ${song.title} (${Math.round(file.size / 1024)} KB)`);
       namer.add(song.id);
     } catch (e) {
@@ -165,7 +165,7 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
         if (hit && !already && !(other && other.id !== s.id)) {
           try {
             const file = await yandex.download(hit.id, store.songsDir, s.id);
-            store.setFile(s.id, file.name, file.size);
+            store.setFile(s.id, file.name, file.size, file.from);
             store.addSource(s.id, key, `https://music.yandex.ru/track/${hit.id}`);
             s.tagged = ''; // the new file gets our names and cover written into it (and the phones see its new size)
             namer.add(s.id);
@@ -225,10 +225,11 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
     fs.createReadStream(p, { start, end }).pipe(res);
   }
 
-  function receiveFile(req, res, song, ext) {
+  function receiveFile(req, res, song, ext, from = '') {
     if (!AUDIO[ext]) return send(res, 400, 'unsupported format');
-    // the PC got it meanwhile (a copy it found on YouTube by name is replaced by the phone's)
-    if (song.status === 'ready' && !(song.found && !song.fromPhone)) { req.resume(); return send(res, 200, { id: song.id, status: song.status }); }
+    // the PC got it meanwhile (a copy it found on YouTube by name is replaced by the phone's, unless the phone's is
+    // Yandex's: the found one may be uncensored)
+    if (song.status === 'ready' && !(song.found && !song.fromPhone && from !== 'yandex')) { req.resume(); return send(res, 200, { id: song.id, status: song.status }); }
     const tmp = path.join(store.songsDir, `${song.id}.upload-${crypto.randomBytes(4).toString('hex')}`);
     const out = fs.createWriteStream(tmp);
     let size = 0;
@@ -244,7 +245,7 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
       fs.renameSync(tmp, path.join(store.songsDir, name));
       song.fromPhone = true;
       song.phoneHas = 0;
-      store.setFile(song.id, name, size);
+      store.setFile(song.id, name, size, from === 'yandex' ? 'yandex' : '');
       log(`+ ${song.artist} - ${song.title} (from a phone, ${Math.round(size / 1024)} KB)`);
       namer.add(song.id);
       send(res, 200, { id: song.id, status: 'ready' });
@@ -281,7 +282,8 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
         // A phone that has the file of a song from Yandex, SoundCloud...: its copy is the very recording that played,
         // better than the PC's guess on YouTube; the PC waits for it. YouTube songs the PC downloads itself (the same
         // video, and nothing for the phone to send)
-        const better = body.hasFile && body.platform !== 'youtube' && !song.fromPhone && (song.status !== 'ready' || song.found);
+        // (a Yandex file never replaces the copy the PC found elsewhere: that one may be uncensored)
+        const better = body.hasFile && body.platform !== 'youtube' && !song.fromPhone && (song.status !== 'ready' || (song.found && body.platform !== 'yandex'));
         if (better) { song.phoneHas = Date.now(); store.save(); } else enqueue(song);
         return send(res, 200, { id: song.id, status: song.status, needFile: song.status === 'needs-file' || !!better });
       }
@@ -297,7 +299,7 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
       if (!song) return send(res, 404, 'not found');
       const part = m[2] || '';
       if (part === 'file' && req.method === 'GET') return serveFile(req, res, song);
-      if (part === 'file' && req.method === 'PUT') return receiveFile(req, res, song, String(u.searchParams.get('ext') || '').toLowerCase());
+      if (part === 'file' && req.method === 'PUT') return receiveFile(req, res, song, String(u.searchParams.get('ext') || '').toLowerCase(), String(u.searchParams.get('from') || ''));
       if (part === 'cover' && req.method === 'GET') {
         const p = path.join(dir, 'covers', `${song.id}.jpg`);
         if (!fs.existsSync(p)) return send(res, 404, 'no cover');

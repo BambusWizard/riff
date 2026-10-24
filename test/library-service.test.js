@@ -134,18 +134,29 @@ test('a phone that has the file of a Yandex song sends it, and the PC does not d
 });
 
 test("the PC's copy found on YouTube is replaced by the phone's file of the song", async (t) => {
+  const sc = { platform: 'soundcloud', id: 'sc4', url: 'https://soundcloud.com/lida/song', title: 'Song', artist: 'Lida', duration: 180, reason: 'liked' };
+  const { api, settle, svc } = await start(t, { fails: (u) => u.includes('soundcloud'), found: { id: 'yt9', url: 'https://www.youtube.com/watch?v=yt9' } });
+  const { body } = await api('/ingest', { method: 'POST', body: sc });
+  await settle();
+  assert.strictEqual(svc.store.get(body.id).status, 'ready');
+  assert.strictEqual((await api('/catalog')).body.songs[0].guess, true); // phones that have it send theirs
+  assert.strictEqual((await api('/ingest', { method: 'POST', body: { ...sc, hasFile: true } })).body.needFile, true);
+  const mine = Buffer.alloc(300 * 1024, 9);
+  await api(`/songs/${body.id}/file?ext=m4a&from=soundcloud`, { method: 'PUT', body: mine });
+  assert.strictEqual(svc.store.get(body.id).file.size, mine.length);
+  assert.strictEqual((await api('/catalog')).body.songs[0].guess, undefined);
+  assert.strictEqual((await api('/ingest', { method: 'POST', body: { ...sc, hasFile: true } })).body.needFile, false);
+});
+
+test("a phone's Yandex file never replaces the copy the PC found elsewhere (Yandex mutes swear words)", async (t) => {
   const yandex = { platform: 'yandex', id: 'ym4', url: 'https://music.yandex.ru/track/4', title: 'Song', artist: 'Lida', duration: 180, reason: 'liked' };
   const { api, settle, svc } = await start(t, { fails: (u) => u.includes('yandex'), found: { id: 'yt9', url: 'https://www.youtube.com/watch?v=yt9' } });
   const { body } = await api('/ingest', { method: 'POST', body: yandex });
   await settle();
-  assert.strictEqual(svc.store.get(body.id).status, 'ready');
-  assert.strictEqual((await api('/catalog')).body.songs[0].guess, true); // phones that have it send theirs
-  assert.strictEqual((await api('/ingest', { method: 'POST', body: { ...yandex, hasFile: true } })).body.needFile, true);
-  const mine = Buffer.alloc(300 * 1024, 9);
-  await api(`/songs/${body.id}/file?ext=m4a`, { method: 'PUT', body: mine });
-  assert.strictEqual(svc.store.get(body.id).file.size, mine.length);
-  assert.strictEqual((await api('/catalog')).body.songs[0].guess, undefined);
+  const found = svc.store.get(body.id).file.size;
   assert.strictEqual((await api('/ingest', { method: 'POST', body: { ...yandex, hasFile: true } })).body.needFile, false);
+  await api(`/songs/${body.id}/file?ext=mp3&from=yandex`, { method: 'PUT', body: Buffer.alloc(300 * 1024, 9) });
+  assert.strictEqual(svc.store.get(body.id).file.size, found);
 });
 
 test('a YouTube song is downloaded by the PC even when the phone has it', async (t) => {

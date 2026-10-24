@@ -94,7 +94,7 @@ async function download(trackId, dir, base) {
   const name = `${base}.mp3`;
   fs.writeFileSync(path.join(dir, `${name}.part`), data);
   fs.renameSync(path.join(dir, `${name}.part`), path.join(dir, name));
-  return { name, size: data.length };
+  return { name, size: data.length, from: 'yandex' };
 }
 
 module.exports = { configure, enabled, candidates, trackFor, download };

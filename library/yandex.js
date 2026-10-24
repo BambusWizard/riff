@@ -12,7 +12,9 @@ const { parseName, similarity, artistSimilarity, versionOf } = require('./names'
 
 const UA = 'Mozilla/5.0';
 const RELAYED = ['api.music.yandex.net', 'storage.mds.yandex.net'];
-const UNCENSORED = /без\s*цензуры|без\s*мата|uncensored|нецензур|explicit/i;
+// Yandex's "explicit" mark is only 18+: its censored releases (words muted into a mush) carry it too. Uncensored is
+// what the name says, nothing else
+const UNCENSORED = /без\s*цензуры|без\s*мата|uncensored|нецензур/i;
 
 let via = () => null; // -> { worker, key } or null
 function configure(getter) { via = getter; }
@@ -34,7 +36,7 @@ async function get(url, as = 'json', ms = 15000) {
 }
 
 const titleOf = (x) => (x.version ? `${x.title} (${x.version})` : x.title);
-const isExplicit = (x) => x.contentWarning === 'explicit' || UNCENSORED.test(x.version || '');
+const isUncensored = (x) => UNCENSORED.test(titleOf(x));
 
 async function search(artist, title) {
   const j = await get(`https://api.music.yandex.net/search?type=track&page=0&text=${encodeURIComponent(`${artist} ${title}`)}`);
@@ -53,8 +55,8 @@ async function candidates(artist, title) {
   });
 }
 
-// The Yandex track to keep for a song: the same song (name, version, artist, length), the uncensored release
-// whenever there is one ("Song" and "Song (без цензуры)" are one song here; the censored one only if nothing else)
+// The Yandex track for a song: the same song (name, version, artist, length), the song's own track (the one a phone
+// played) first, and a release named uncensored over it ("Song" and "Song (без цензуры)" are one song here)
 async function trackFor(song) {
   const p = parseName(song.title, song.artist);
   const want = versionOf(p.title);
@@ -62,7 +64,7 @@ async function trackFor(song) {
   const mustBeUncensored = UNCENSORED.test(want.version); // never the censored release for "Song (без цензуры)"
   let best = null;
   for (const x of await search(p.artist, want.base || p.title)) {
-    if (x.available === false || (mustBeUncensored && !isExplicit(x))) continue;
+    if (x.available === false || (mustBeUncensored && !isUncensored(x))) continue;
     const v = versionOf(titleOf(x));
     const version = v.version.replace(UNCENSORED, '').replace(/[\s·]+/g, ' ').trim();
     const t = similarity(v.base, want.base);
@@ -72,8 +74,8 @@ async function trackFor(song) {
     if (song.duration && dur && Math.abs(song.duration - dur) > Math.max(10, song.duration * 0.06)) continue;
     // the song's own track (the one a phone played) over the same recording on another release
     const own = (song.sources || []).includes(`yandex:${x.id}`);
-    const s = t + a + (isExplicit(x) ? 2 : 0) + (own ? 0.5 : 0);
-    if (!best || s > best.s) best = { s, id: String(x.id), explicit: isExplicit(x), title: titleOf(x) };
+    const s = t + a + (isUncensored(x) ? 2 : 0) + (own ? 0.5 : 0);
+    if (!best || s > best.s) best = { s, id: String(x.id), uncensored: isUncensored(x), title: titleOf(x) };
   }
   return best;
 }

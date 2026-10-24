@@ -117,20 +117,22 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
     }
   }
 
-  // Yandex Music first, whatever site the song was played on: the release itself as a full MP3, and the uncensored
-  // one when there is one. Null when it can't be reached or hasn't the song; then the song's own source, YouTube...
+  // A song played on Yandex Music: its full MP3, or the release of it named uncensored. A song played anywhere else
+  // keeps that recording (Yandex's may be the censored one, words muted into a mush); only its uncensored release
+  // replaces it. Null: the song's own source then, YouTube...
   async function fromYandex(song) {
     if (!yandex.enabled()) return null;
+    const playedThere = song.sources.some((k) => k.startsWith('yandex:'));
     try {
       const hit = await yandex.trackFor(song);
       // another song of the library has this very track (its other version, say): this one keeps its own source,
       // so no version's file is ever another's
       const other = hit && store.bySource(`yandex:${hit.id}`);
-      if (!hit || (other && other.id !== song.id)) { song.yandexChecked = Date.now(); store.save(); return null; }
+      if (!hit || (other && other.id !== song.id) || (!playedThere && !hit.uncensored)) { song.yandexChecked = Date.now(); store.save(); return null; }
       const file = await yandex.download(hit.id, store.songsDir, song.id);
       store.addSource(song.id, `yandex:${hit.id}`, `https://music.yandex.ru/track/${hit.id}`);
       song.yandexChecked = Date.now();
-      log(`y ${song.artist} - ${song.title}: from Yandex Music (${hit.title}${hit.explicit ? ', uncensored' : ''})`);
+      log(`y ${song.artist} - ${song.title}: from Yandex Music (${hit.title})`);
       return file;
     } catch (e) {
       log(`! ${song.artist} - ${song.title}: Yandex Music: ${e.message}`);
@@ -138,8 +140,7 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
     }
   }
 
-  // ---- the songs kept before Yandex could be reached: each becomes Yandex's MP3 (the uncensored release first)
-  // where Yandex has it. One song at a time and only while nothing else downloads; each is looked at once
+  // ---- the songs kept before Yandex could be reached: one Yandex has a release of named uncensored gets that. One song at a time and only while nothing else downloads; each is looked at once
   // (yandexChecked), except when Yandex couldn't be asked. The phones replace their copies as they play them ----
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   let upgrading = false;
@@ -158,9 +159,9 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
         try { hit = await yandex.trackFor(s); } catch (e) { log(`! library pass: Yandex Music: ${e.message}`); break; }
         const key = hit && `yandex:${hit.id}`;
         const other = key && store.bySource(key);
-        // a file that is Yandex's already (a phone sent it) is only swapped for the uncensored release
-        const fromYandexAlready = s.file && s.file.format === 'mp3' && s.sources.some((k) => k.startsWith('yandex:'));
-        const already = key && fromYandexAlready && (s.sources.includes(key) || !hit.explicit);
+        // only a release named uncensored replaces a file the library has (whatever the file is, Yandex's other
+        // releases may be the censored mush), and not the one it is already
+        const already = !hit || !hit.uncensored || s.sources.includes(key);
         if (hit && !already && !(other && other.id !== s.id)) {
           try {
             const file = await yandex.download(hit.id, store.songsDir, s.id);
@@ -169,7 +170,7 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
             s.tagged = ''; // the new file gets our names and cover written into it (and the phones see its new size)
             namer.add(s.id);
             replaced += 1;
-            log(`y ${s.artist} - ${s.title}: now Yandex Music's (${hit.title}${hit.explicit ? ', uncensored' : ''})`);
+            log(`y ${s.artist} - ${s.title}: now Yandex Music's ${hit.title}`);
           } catch (e) { log(`! ${s.artist} - ${s.title}: Yandex Music: ${e.message}`); await sleep(2000); continue; }
         }
         s.yandexChecked = Date.now();

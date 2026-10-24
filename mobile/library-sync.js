@@ -253,8 +253,7 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
       // songs the PC found on YouTube by name, which this phone has from where they played
       for (const song of catalog.songs) {
         if (!song.guess) continue;
-        // never a Yandex file for it: Yandex mutes swear words, the copy found may be uncensored
-        const own = song.sources.map((k) => k.split(/:(.*)/)).find(([p]) => p !== 'youtube' && p !== 'yandex');
+        const own = song.sources.map((k) => k.split(/:(.*)/)).find(([p]) => p !== 'youtube');
         const file = own && !uploadFailed.has(`${own[0]}:${own[1]}`) && localFile({ id: own[1] });
         if (!file) continue;
         try { await upload(pc, song.id, file, own[0]); song.guess = false; log(`library: sent ${song.artist} - ${song.title}`); } catch (e) { uploadFailed.add(`${own[0]}:${own[1]}`); }
@@ -328,8 +327,6 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
     const q = new URL(url).searchParams;
     const song = bySource.get(`${q.get('platform') || 'youtube'}:${q.get('id')}`);
     if (!song || !song.ready) return null;
-    // the library's file is Yandex's (swear words muted) and this is another site's song: that site's copy plays
-    if (song.yandexFile && (q.get('platform') || 'youtube') !== 'yandex') return null;
     const local = localFile({ id: q.get('id') });
     if (local && !wrongCopy(song, local, q.get('id'))) return null;
     // a song heard is kept on the phone like any other (it then plays from here, offline too): the PC's copy is
@@ -344,7 +341,7 @@ module.exports = function librarySync({ fs, pageFetch, proxyUrl, accessKey, file
   // Which one plays is each person's choice (riff_library_versions, synced between their own devices); until they
   // choose: the one they liked, else the uncensored one, else the song itself ----
   const VERSIONS = 'riff_library_versions';
-  const UNCENSORED = /без\s*цензуры|без\s*мата|uncensored|нецензур|explicit/i;
+  const UNCENSORED = /без\s*цензуры|без\s*мата|uncensored|нецензур/i;
   const groupSongs = (group) => {
     const seen = new Set();
     const out = [];

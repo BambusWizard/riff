@@ -9,7 +9,7 @@
 //   POST   /ingest                 {platform, id, url, title, artist, duration, thumbnail, reason}: a song to keep
 //   GET    /songs/<id>/file        the audio (Range requests work, so playback can seek)
 //   PUT    /songs/<id>/file?ext=   a phone uploads the audio for a song the PC couldn't download
-//   PATCH  /songs/<id>             {title, artist, album, year, cover}: our names for it
+//   PATCH  /songs/<id>             {title, artist, album, year, cover}: our names for it; {keep}: no Yandex file replaces its copy
 //   DELETE /songs/<id>
 //   GET    /review                 songs whose names the catalogues weren't sure about, with their guesses
 //   POST   /songs/<id>/match       {index} (one of its guesses) or {title, artist, ...}: confirm its names
@@ -117,21 +117,23 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
     }
   }
 
-  // A song played on Yandex Music: its full MP3, or the release of it named uncensored. A song played anywhere else
-  // keeps that recording (Yandex's may be the censored one, words muted into a mush); only its uncensored release
-  // replaces it. Null: the song's own source then, YouTube...
+  // A song whose copy no Yandex file replaces: one named uncensored, or one marked by hand "keep this copy" (Yandex
+  // mutes swear words into a mush in many releases). Only Yandex's release named uncensored replaces it
+  const keepsCopy = (song) => !!song.keep || lookup.UNCENSORED.test(song.title || '');
+
+  // Yandex Music first, whatever site the song was played on: its full MP3 is better than YouTube's. A song that
+  // keeps its copy (keepsCopy) takes only the release named uncensored. Null: the song's own source then, YouTube...
   async function fromYandex(song) {
     if (!yandex.enabled()) return null;
-    const playedThere = song.sources.some((k) => k.startsWith('yandex:'));
     try {
       const hit = await yandex.trackFor(song);
       // another song of the library has this very track (its other version, say): this one keeps its own source,
       // so no version's file is ever another's
       const other = hit && store.bySource(`yandex:${hit.id}`);
-      if (!hit || (other && other.id !== song.id) || (!playedThere && !hit.uncensored)) { song.yandexChecked = Date.now(); store.save(); return null; }
+      if (!hit || (other && other.id !== song.id) || (keepsCopy(song) && !hit.uncensored)) { song.yandexDone = Date.now(); store.save(); return null; }
       const file = await yandex.download(hit.id, store.songsDir, song.id);
       store.addSource(song.id, `yandex:${hit.id}`, `https://music.yandex.ru/track/${hit.id}`);
-      song.yandexChecked = Date.now();
+      song.yandexDone = Date.now();
       log(`y ${song.artist} - ${song.title}: from Yandex Music (${hit.title})`);
       return file;
     } catch (e) {
@@ -140,8 +142,9 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
     }
   }
 
-  // ---- the songs kept before Yandex could be reached: one Yandex has a release of named uncensored gets that. One song at a time and only while nothing else downloads; each is looked at once
-  // (yandexChecked), except when Yandex couldn't be asked. The phones replace their copies as they play them ----
+  // ---- the songs kept before Yandex could be reached become Yandex's MP3, except those that keep their copy
+  // (keepsCopy: only the release named uncensored for them). One song at a time and only while nothing else
+  // downloads; each is looked at once (yandexDone), except when Yandex couldn't be asked. The phones replace their copies as they play them ----
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   let upgrading = false;
   async function upgradeLibrary() {
@@ -152,16 +155,16 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
       // songs named uncensored first: they get their track before a plain song of the same group could take it
       const order = store.songs.slice().sort((a, b) => lookup.UNCENSORED.test(b.title) - lookup.UNCENSORED.test(a.title));
       for (const s of order) {
-        if (s.status !== 'ready' || s.yandexChecked || store.get(s.id) !== s) continue;
+        if (s.status !== 'ready' || s.yandexDone || store.get(s.id) !== s) continue;
         while (active.size || queue.length) await sleep(5000);
         if (store.usedBytes() >= maxBytes) break;
         let hit;
         try { hit = await yandex.trackFor(s); } catch (e) { log(`! library pass: Yandex Music: ${e.message}`); break; }
         const key = hit && `yandex:${hit.id}`;
         const other = key && store.bySource(key);
-        // only a release named uncensored replaces a file the library has (whatever the file is, Yandex's other
-        // releases may be the censored mush), and not the one it is already
-        const already = !hit || !hit.uncensored || s.sources.includes(key);
+        // not the Yandex file it has already, and for a song that keeps its copy only the release named uncensored
+        const fromYandexAlready = s.file && (s.file.from === 'yandex' || (!s.file.from && s.file.format === 'mp3'));
+        const already = !hit || (fromYandexAlready && s.sources.includes(key)) || (keepsCopy(s) && !hit.uncensored);
         if (hit && !already && !(other && other.id !== s.id)) {
           try {
             const file = await yandex.download(hit.id, store.songsDir, s.id);
@@ -173,7 +176,7 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
             log(`y ${s.artist} - ${s.title}: now Yandex Music's ${hit.title}`);
           } catch (e) { log(`! ${s.artist} - ${s.title}: Yandex Music: ${e.message}`); await sleep(2000); continue; }
         }
-        s.yandexChecked = Date.now();
+        s.yandexDone = Date.now();
         store.save();
         await sleep(1500);
       }
@@ -227,9 +230,9 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
 
   function receiveFile(req, res, song, ext, from = '') {
     if (!AUDIO[ext]) return send(res, 400, 'unsupported format');
-    // the PC got it meanwhile (a copy it found on YouTube by name is replaced by the phone's, unless the phone's is
-    // Yandex's: the found one may be uncensored)
-    if (song.status === 'ready' && !(song.found && !song.fromPhone && from !== 'yandex')) { req.resume(); return send(res, 200, { id: song.id, status: song.status }); }
+    // the PC got it meanwhile (a copy it found on YouTube by name is replaced by the phone's, unless the song keeps
+    // its copy and the phone's is Yandex's)
+    if (song.status === 'ready' && !(song.found && !song.fromPhone && !(from === 'yandex' && keepsCopy(song)))) { req.resume(); return send(res, 200, { id: song.id, status: song.status }); }
     const tmp = path.join(store.songsDir, `${song.id}.upload-${crypto.randomBytes(4).toString('hex')}`);
     const out = fs.createWriteStream(tmp);
     let size = 0;
@@ -282,8 +285,8 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
         // A phone that has the file of a song from Yandex, SoundCloud...: its copy is the very recording that played,
         // better than the PC's guess on YouTube; the PC waits for it. YouTube songs the PC downloads itself (the same
         // video, and nothing for the phone to send)
-        // (a Yandex file never replaces the copy the PC found elsewhere: that one may be uncensored)
-        const better = body.hasFile && body.platform !== 'youtube' && !song.fromPhone && (song.status !== 'ready' || (song.found && body.platform !== 'yandex'));
+        // (a Yandex file doesn't replace the copy of a song that keeps it)
+        const better = body.hasFile && body.platform !== 'youtube' && !song.fromPhone && (song.status !== 'ready' || (song.found && !(body.platform === 'yandex' && keepsCopy(song))));
         if (better) { song.phoneHas = Date.now(); store.save(); } else enqueue(song);
         return send(res, 200, { id: song.id, status: song.status, needFile: song.status === 'needs-file' || !!better });
       }
@@ -322,7 +325,14 @@ function createService({ dir = DEFAULT_DIR, config, download = downloader.downlo
         store.save();
         return send(res, 200, { candidates: song.match.candidates });
       }
-      if (!part && req.method === 'PATCH') { const done = store.update(song.id, await readJson(req)); namer.add(song.id); return send(res, 200, done); }
+      if (!part && req.method === 'PATCH') {
+        const body = await readJson(req);
+        // {keep}: this copy is the one to keep (uncensored), no Yandex file replaces it
+        if (body.keep !== undefined) { song.keep = !!body.keep; store.save(); }
+        const done = store.update(song.id, body);
+        namer.add(song.id);
+        return send(res, 200, done);
+      }
       // versions by hand: {with: "<id>"} makes it a version of that song, {with: null} a song of its own,
       // {with: "auto"} back to grouping by name
       if (part === 'group' && req.method === 'POST') {

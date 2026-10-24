@@ -101,8 +101,7 @@ class Store {
   }
 
   // the audio file is in songs/ under the song's id; replaces an older file of another format
-  // from: where the file came from, when it is Yandex Music ("yandex"): Yandex mutes swear words into a mush, so
-  // its file never takes the place of another site's (here or on a phone)
+  // from: where the file came from, when it is Yandex Music ("yandex")
   setFile(id, name, size, from = '') {
     const song = this.get(id);
     if (!song) return null;

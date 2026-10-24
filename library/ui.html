@@ -104,6 +104,7 @@ function songHtml(s) {
         <label>Year<input name="year" value="${esc(s.year)}"></label>
         <label style="grid-column: 1 / -1">Cover URL<input name="cover" value="${esc(s.cover)}"></label>
       </form>
+      <label style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" data-act="keep" ${s.keep ? 'checked' : ''} style="width:auto">Uncensored copy: keep it, never replace it with Yandex Music's</label>
       <label>Versions: ${group.length > 1 ? esc(group.filter((x) => x.id !== s.id).map((x) => `${x.title}`).join(', ')) : 'none'}
         <select data-act="group">
           <option value="">Change…</option>
@@ -148,6 +149,11 @@ document.querySelector('.tabs').addEventListener('click', (e) => {
 });
 document.getElementById('q').addEventListener('input', render);
 document.getElementById('list').addEventListener('change', async (e) => {
+  const keep = e.target.closest('input[data-act="keep"]');
+  if (keep) {
+    try { await api(`/songs/${keep.closest('.song').dataset.id}`, { method: 'PATCH', body: JSON.stringify({ keep: keep.checked }) }); await load(); } catch (err) { alert(err.message); }
+    return;
+  }
   const sel = e.target.closest('select[data-act="group"]');
   if (!sel || !sel.value) return;
   const id = sel.closest('.song').dataset.id;

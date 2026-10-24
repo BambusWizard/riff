@@ -44,7 +44,12 @@ names in search, artist pages, likes, history and playlists.
 Yandex answers only Russian addresses, so the service asks it through the Riff worker (with `workerKey`), as the
 phones do; a VPN on the PC doesn't matter. Every new song is first looked for there and kept as Yandex's full MP3
 (Plus), the uncensored release whenever there is one; only a song Yandex hasn't comes from where it was played
-or from YouTube.
+or from YouTube. Songs kept before that are swapped for Yandex's MP3 by a pass in the background (phones replace
+their copies as they play them).
+
+Many Yandex releases mute swear words. A song named uncensored ("без цензуры"...), or one marked by hand
+("Uncensored copy: keep it" under Edit on the library page), keeps its copy: only a Yandex release named
+uncensored replaces it.
 
 ## How the phones reach it
 

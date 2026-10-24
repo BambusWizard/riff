@@ -1,7 +1,7 @@
 // Web build only: keeps the app's own files on the phone so the Home Screen app opens without internet.
 // build.mjs fills in VERSION and SHELL (every file of this build, with the same ?v= the page asks for).
-const VERSION = '5459062';
-const SHELL = ["index.html","pwa/manifest.webmanifest","pwa/icon-180.png","styles.css?v=5459062","mobile.css?v=5459062","assets/icon.png","mobile-bridge.js?v=5459062","audio-engine.js?v=5459062","m3shapes.js?v=5459062","lyrics-rtl.js?v=5459062","track-sort.js?v=5459062","search-text.js?v=5459062","library-tools.js?v=5459062","app.js?v=5459062","mobile-ui.js?v=5459062","assets/hls.min.js","pwa/icon-192.png","pwa/icon-512.png"];
+const VERSION = 'fda1ea0';
+const SHELL = ["index.html","pwa/manifest.webmanifest","pwa/icon-180.png","styles.css?v=fda1ea0","mobile.css?v=fda1ea0","assets/icon.png","mobile-bridge.js?v=fda1ea0","audio-engine.js?v=fda1ea0","m3shapes.js?v=fda1ea0","lyrics-rtl.js?v=fda1ea0","track-sort.js?v=fda1ea0","search-text.js?v=fda1ea0","library-tools.js?v=fda1ea0","app.js?v=fda1ea0","mobile-ui.js?v=fda1ea0","assets/hls.min.js","pwa/icon-192.png","pwa/icon-512.png"];
 const CHANNEL = 'stable';
 // per channel: stable's worker (scope /riff/) must not throw away nightly's files (/riff/nightly/) or back
 const PREFIX = `riff-${CHANNEL}-`;
@@ -12,6 +12,7 @@ const FONTS = /^https:\/\/fonts\.(googleapis|gstatic)\.com$/;
 const COVERS = 'covers';
 const COVERS_CORS = 'covers-cors';
 const MAX_COVERS = 1500;
+const LIBRARY_COVERS = 'library-covers';
 
 self.addEventListener('install', (e) => {
   // the page is fetched as index.html?v=VERSION: without the query the CDN may still hand out the previous build's page
@@ -74,6 +75,8 @@ const trim = (name) => {
 };
 
 async function cover(req) {
+  const own = await (await caches.open(LIBRARY_COVERS)).match(req.url); // the PC library's copy (library-sync.js)
+  if (own) return own;
   const name = req.mode === 'cors' ? COVERS_CORS : COVERS;
   const c = await caches.open(name);
   const hit = await c.match(req);
